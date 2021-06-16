@@ -322,7 +322,7 @@ persist-key
 persist-tun
 verb 3
 compress lz4-v2
-push "compress lz4-v2"
+push \"compress lz4-v2\"
 crl-verify crl.pem" >> /etc/openvpn/server/server.conf
     if [[ "$protocol" = "udp" ]]; then
         echo "explicit-exit-notify" >> /etc/openvpn/server/server.conf
