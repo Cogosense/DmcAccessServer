@@ -321,6 +321,8 @@ group $group_name
 persist-key
 persist-tun
 verb 3
+compress lz4-v2
+push "compress lz4-v2"
 crl-verify crl.pem" >> /etc/openvpn/server/server.conf
     if [[ "$protocol" = "udp" ]]; then
         echo "explicit-exit-notify" >> /etc/openvpn/server/server.conf
@@ -418,6 +420,7 @@ auth SHA512
 cipher AES-256-CBC
 ignore-unknown-option block-outside-dns
 block-outside-dns
+comp-lzo
 verb 3" > /etc/openvpn/server/client-common.txt
     # Enable and start the OpenVPN service
     systemctl enable --now openvpn-server@server.service
