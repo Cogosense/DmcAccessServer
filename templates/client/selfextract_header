@@ -1,6 +1,23 @@
 #!/bin/bash
 # Install script created by dmc-access-mgr
 
+opt_f='no'
+opt_d='no'
+
+usage() {
+    cat << _EOF
+
+"$progname" print the version string
+
+Usage $0 [OPTIONS]
+
+ -d    uninstall the existing installation first and exit. Run again to install.
+ -f    force the installation when the machine cannot be identified as
+       a gateway.
+
+_EOF
+}
+
 if [[ "$EUID" -ne 0 ]]; then
     >&2 echo "error: This installer needs to be run with superuser privileges."
     >&2 echo ""
@@ -9,9 +26,63 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
-sed '0,/^__EOF__$/d' $0 | tar xz
+while getopts dfh c ; do
+    case $c in
+        d) opt_d='yes' ;;
+        f) opt_f='yes' ;;
+        h) usage ; exit 0 ;;
+        \?) usage ; >&2 echo"unknown option: $c" ; exit 1 ;;
+    esac
+done
 
-apt install -y openssh-server
+interfaces=$(ip link | awk '/^[0-9]*: /{print substr($2, 1, length($2)-1)}')
+
+ifcnt=0
+cfg=0
+for interface in $interfaces ; do
+    case $interface in
+	enp?s0)   ((ifcnt++)) ;;
+	lanbr0)   ((cfg++))   ;;
+	tun0)     ((cfg++))   ;;
+	gretap1*) ((cfg++))   ;;
+    esac
+done
+
+if [ $ifcnt -lt 4 -a $opt_f == 'no' ] ; then
+    >&2 echo "error: Cannot install because this machine does not seem to be a remote gateway."
+    >&2 echo "       Use -f option to force gateway install anyway."
+    exit 1
+fi
+
+if [ $cfg -gt 2 -a $opt_d == 'no' ] ; then
+    >&2 echo "error: Cannot install because this gateway is already installed."
+    >&2 echo "       Use -d option to uninstall gateway first."
+    exit 1
+fi
+
+if [ $opt_d == 'yes' ] ; then
+    echo "DMC gateway uninstall is ready to begin."
+else
+    echo "DMC gateway installation is ready to begin."
+fi
+read -n1 -r -p "Press any key to continue..."
+
+if [ $opt_d == 'yes' ] ; then
+    echo "Uninstalling gateway"
+    for yaml in /etc/netplan/*.yaml ; do
+        case $yaml in
+            00*) ;;
+            *) rm $yaml ;;
+        esac
+    done
+    rm /etc/openvpn/*.conf
+    ip link del lanbr0
+    ip link del gretap1
+else
+    sed '0,/^__EOF__$/d' $0 | tar xz -C /
+    apt install -y openssh-server
+fi
+
 systemctl daemon-reload
 service openvpn restart
 netplan generate
@@ -19,4 +90,3 @@ netplan apply
 
 exit 0
 __EOF__
-
