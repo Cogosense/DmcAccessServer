@@ -1,0 +1,9 @@
+# This is the network config written by 'dmc-access-mgr'
+network:
+  version: 2
+  tunnels:
+    gretap1:
+      mode: gretap
+      local: ${CLIENTIP}
+      remote: ${SERVERIP}
+

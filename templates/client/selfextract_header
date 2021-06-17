@@ -1,0 +1,22 @@
+#!/bin/bash
+# Install script created by dmc-access-mgr
+
+if [[ "$EUID" -ne 0 ]]; then
+    >&2 echo "error: This installer needs to be run with superuser privileges."
+    >&2 echo ""
+    >&2 echo "           sudo $0"
+    >&2 echo ""
+    exit 1
+fi
+
+sed '0,/^__EOF__$/d' $0 | tar xz
+
+apt install -y openssh-server
+systemctl daemon-reload
+service openvpn restart
+netplan generate
+netplan apply
+
+exit 0
+__EOF__
+

@@ -1,0 +1,10 @@
+# This is the network config written by 'dmc-access-mgr'
+network:
+  version: 2
+  bridges:
+    lanbr0:
+      interfaces: [enp3s0,enp4s0,gretap1]
+      parameters:
+        stp: yes
+      dhcp4: no
+      dhcp6: no
