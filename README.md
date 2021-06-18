@@ -148,7 +148,7 @@ communicate.
 
 The DMC Access Server and the Remote Gateway provide a mechanism to tunnel the IPv6
 local area network across an intervening IPv6 or an IPv4 only network, including the
-Internet if necessary.  The result is the ability to join not contiguous networks into
+Internet if necessary.  The result is the ability to join non-contiguous networks into
 a contiguous IPv6 LAN.
 
 All communications are encrypted, all authentication is certificate based, requiring no
@@ -162,17 +162,18 @@ low bandwidth links.
 
 The DMC Access Server consists of two parts:
 
-1. The Access Server that is usually located in a NOC.
+1. The Access Server that is usually located in a NOC, this is connected to the DMC.
 2. The Remote Gateway, that is connected to the remote antenna system.
 
-The Access Server consists of an OpenVPN server and a GRETAP tunnel that is a member
+The Access Server consists of an OpenVPN server that creates an OpenVPN tunnel and a
+GRETAP tunnel per configured gateway, The GRETAP tunnel is added as a member
 of the bridge that incorporates the physical interface that is connected to the DMC.
 THe management script in this repo is used to create an OVPN file and a NETPLAN
 configuration for a remote gateway. This is bundled into a self extracting executable
 installer script. The management script also adds the associated GRETAP tunnel into
 the Access Server bridge connected to the DMC.
 
-THe installer script is copied to the gateway device and executed. This creates an
+The installer script is copied to the gateway device and executed. This creates an
 automatic OpenVPN connection service and attaches the end of the GRETAP tunnel to
 the OpenVPN assigned IP address. The GRETAP tunnel is then added to a bridge device
 that incorporates the physical interfaces connected to the antenna system.
@@ -183,7 +184,7 @@ remote IP address becomes available, the GRETAP tunnel will be established over 
 VPN connection.
 
 The bridges on the Access Server toward the DMC and on the Gateway toward the antenna
-only support IPv6. Any IPv6 traffic received on either bridge will be sent via the
-GRETAP tunnel to the other bridge. From the DMC or antenna point of view, it looks to
-all practical intents and purposes that they are directly connected. The gateway and
-the Access Server are essentially transparent.
+only support IPv6 addresses with scope `link`. Any IPv6 traffic received on either
+bridge will be sent via the GRETAP tunnel to the other bridge. From the DMC or antenna
+point of view, it looks to all practical intents and purposes that they are directly
+connected. The gateway and the Access Server are essentially transparent.
