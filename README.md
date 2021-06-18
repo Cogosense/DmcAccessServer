@@ -129,7 +129,7 @@ made executable again).
 
 ### Gateway Installion Notes
 
-1. If the installation does not recognise the gateway hardware, it will not attempt
+1. If the installer does not recognise the gateway hardware, it will not attempt
 to install. The `-f` option to the installer will force an install attempt, but likely
 the network configuration will not be correct afterwards.
 
@@ -138,3 +138,52 @@ to install. The -d option can be use to perform an uninstalltion of the gateway.
 the gateway is uninstalled, the installation should succeed.
 
 
+## What Does The DMC Access Server Do?
+
+The Dali DAS system uses an auto configured IPv6 link local network on the southbound
+side of the DMC. In some cases, the DMC is deployed to a NOC remote from the antennae.
+If the transport network between the NOC and the antenna site it not a contiguous IPv6
+enabled local area network, then the antennae and the controller will not be able to
+communicate.
+
+The DMC Access Server and the Remote Gateway provide a mechanism to tunnel the IPv6
+local area network across an intervening IPv6 or an IPv4 only network, including the
+Internet if necessary.  The result is the ability to join not contiguous networks into
+a contiguous IPv6 LAN.
+
+All communications are encrypted, all authentication is certificate based, requiring no
+passwords. If an enabled gateway device is lost or compromised, it's associated
+certificate can be revoked to disable the gateway permanently.
+
+Data between the access server and the gateway is compressed to help performance across
+low bandwidth links.
+
+## How Does the DMC Access Server Work?
+
+The DMC Access Server consists of two parts:
+
+1. The Access Server that is usually located in a NOC.
+2. The Remote Gateway, that is connected to the remote antenna system.
+
+The Access Server consists of an OpenVPN server and a GRETAP tunnel that is a member
+of the bridge that incorporates the physical interface that is connected to the DMC.
+THe management script in this repo is used to create an OVPN file and a NETPLAN
+configuration for a remote gateway. This is bundled into a self extracting executable
+installer script. The management script also adds the associated GRETAP tunnel into
+the Access Server bridge connected to the DMC.
+
+THe installer script is copied to the gateway device and executed. This creates an
+automatic OpenVPN connection service and attaches the end of the GRETAP tunnel to
+the OpenVPN assigned IP address. The GRETAP tunnel is then added to a bridge device
+that incorporates the physical interfaces connected to the antenna system.
+
+When the gateway is installed and powered on, it will automatically create a VPN
+connection to the Access Server in the NOC. Once the connection is made, and the
+remote IP address becomes available, the GRETAP tunnel will be established over the
+VPN connection.
+
+The bridges on the Access Server toward the DMC and on the Gateway toward the antenna
+only support IPv6. Any IPv6 traffic received on either bridge will be sent via the
+GRETAP tunnel to the other bridge. From the DMC or antenna point of view, it looks to
+all practical intents and purposes that they are directly connected. The gateway and
+the Access Server are essentially transparent.
