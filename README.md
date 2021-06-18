@@ -55,6 +55,13 @@ first gateway configuration be created.
     DMC Access Server installation is ready to begin.
     Press any key to continue...
 
+### Access Server Notes
+
+If the Access Server is running in a VM, the host OS must place the physical NIC associated
+the guest virtual interface toward the DMC into a promiscuous mode. The Access Server is
+running a bridge device on this interface and requires that all packets received by the
+network interface are delivered to the bridge for switching.
+
 ## Gateway Installer Generation
 
 A Gateway installation script for the first gateway is generated after the
