@@ -104,11 +104,9 @@ Plug in the power and turn on the unit by pressing the recessed power button.  H
 the F2 key while the AMI bios is starting. Then select Ubuntu from the boot menu.
 
 In the Ubuntu installation, select the option to erase and reformat the internal SSD
-and then select the minimal install option.
+and then select the minimal install option and set a user name.
 
-Set a user name.
-
-when the install is complete reboot the machine and remove the USB installation
+When the install is complete reboot the machine and remove the USB installation
 media.
 
 Reboot and login, start a terminal and do a software update:
