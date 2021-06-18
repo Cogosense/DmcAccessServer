@@ -75,7 +75,14 @@ if [ $opt_d == 'yes' ] ; then
             *) rm $yaml ;;
         esac
     done
-    rm /etc/openvpn/*.conf
+    for openvpnconf in /etc/openvpn/*.conf; do
+        if [ -e $openvp1nconf ] ; then
+            service=$(basename -s .conf ${openvpnconf}).service
+            systemctl stop $service
+            systemctl disable $service
+            rm $openvpnconf
+        fi
+    done
     ip link del lanbr0
     ip link del gretap1
 else
@@ -84,7 +91,7 @@ else
 fi
 
 systemctl daemon-reload
-service openvpn restart
+service restart openvpn
 netplan generate
 netplan apply
 
