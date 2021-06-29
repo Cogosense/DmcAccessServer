@@ -1,5 +1,45 @@
 # DMC Access Server Procedures
 
+## Hardware Overview
+
+The Qotom hardware used has 4 network interfaces and 4 USB interfaces, an
+Intel Celeron J1900 Quad Core 2.0GHz CPU, 8 GB RAM and 128 GB of SSD
+flash storage. The power consumption is 10W.
+
+The interfaces are assigned as follows:
+
+* NIC 1 - WAN interface connection to the modem or internet
+* NIC 2 - Unused
+* NIC 3 - LAN interface bridged with NIC 4 connected to hdHost or to DMC
+* NIC 4 - LAN interface bridged with NIC 3 connected to hdHost or to DMC
+
+## OS Install on Qotom
+
+This applies to both server and gateway machines.
+
+Equipment needed:
+1. Ubuntu 20.04 USB installation media
+2. USB mouse, USB Keyboard and VGA monitor.
+3. Network connection.
+
+The Qotom Q1904GN comes with no OS installed and only an AMI BIOS.  Plug in a
+VGA monitor, a USB keyboard and USB mouse. Plug in the Ubuntu USB installation
+media and the network cable to network port 1.
+
+Plug in the power and turn on the unit by pressing the recessed power button.  Hit
+the F2 key while the AMI bios is starting. Then select Ubuntu from the boot menu.
+
+In the Ubuntu installation, select the option to erase and reformat the internal SSD
+and then select the minimal install option and set a user name.
+
+When the install is complete reboot the machine and remove the USB installation
+media.
+
+Reboot and login, start a terminal and do a software update:
+
+    sudo apt update
+    sudo apt -y upgrade
+
 ## Initial Installation of the DMC Access Server
 
 The DMC access server requires a minimum of two interfaces. One interface will be
@@ -97,29 +137,6 @@ a network connection.
 
 ## Installing A Remote Gateway
 
-Equipment needed:
-1. Qotom Q1904GN computer.
-2. Ubuntu 20.04 USB installation media
-3. USB mouse, USB Keyboard and VGA monitor.
-4. Network connection.
-
-The Qotom Q1904GN comes with no OS installed and only an AMI BIOS.  Plug in a
-VGA monitor, a USB keyboard and USB mouse. Plug in the Ubuntu USB installation
-media and the network cable to network port 1.
-
-Plug in the power and turn on the unit by pressing the recessed power button.  Hit
-the F2 key while the AMI bios is starting. Then select Ubuntu from the boot menu.
-
-In the Ubuntu installation, select the option to erase and reformat the internal SSD
-and then select the minimal install option and set a user name.
-
-When the install is complete reboot the machine and remove the USB installation
-media.
-
-Reboot and login, start a terminal and do a software update:
-
-    sudo apt update
-    sudo apt -y upgrade
 
 Now copy the gateway installer file created by the DMC access server
 to the gateway and run it. (If a USB flash drive was used, the file may need to be
