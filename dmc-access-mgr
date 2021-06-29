@@ -14,6 +14,7 @@ CCDDIR=${CFGDIR}/ccd
 CLIENTDIR=${CFGDIR}/client
 SERVERDIR=${CFGDIR}/server
 TOOLDIR=$(cd $(dirname $0) && pwd)
+: ${NETPLANDIR:=/etc/netplan}
 
 # Detect Debian users running the script with "sh" instead of bash
 if readlink /proc/$$/exe | grep -q "dash"; then
@@ -104,26 +105,68 @@ dec2ip() {
     echo ${s:1}
 }
 
+detect_qotom() {
+    interfaces=$(ip link | awk '/^[0-9]*: /{print substr($2, 1, length($2)-1)}')
+    ifcnt=0
+    for interface in $interfaces ; do
+        case $interface in
+            enp?s0)   ((ifcnt++)) ;;
+        esac
+    done
+    return [ $ifcnt -eq 4  ];
+}
+
+select_dmc_interfaces()
+{
+    echo "Which interface(s) are connected to the DMC?"
+    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo)
+    local selected_interfaces=""
+    select interface in ${interfaces}
+    do
+        if [ -n "$interface" ] ; then
+            if grep -q $interface <<< $selected_interfaces ; then
+                selected_interfaces=$(sed "s/$interface//" <<< $selected_interfaces)
+            else
+                selected_interfaces="$selected_interfaces $interface"
+            fi
+            set -- $selected_interfaces
+            selected_interfaces="$*"
+            if [ -z "$selected_interfaces" ] ; then
+                PS3="#? "
+            else
+                PS3="$selected_interfaces #? "
+            fi
+            cnt=1
+            for intf in ${interfaces}; do
+                if grep -q $intf <<< $selected_interfaces ; then
+                    echo "$cnt) * $intf"
+                else
+                    echo "$cnt)   $intf"
+                fi
+                ((cnt++))
+            done
+            read -p "Add/remove another interface? [yN]" ans
+            case $ans in
+                N|n) break 2 ;;
+            esac
+        fi
+    done
+
+    if [ -z "$selected_interfaces" ] ; then
+        echo "no DMC interface selected"
+        exit
+    fi
+    echo "$selected_interfaces"
+}
+
 create_dmc_lanbr() {
-    local interface=$1
-
-    cat << __EOF > /etc/netplan/10-bridge-config.yaml
-# This is the network config written by 'dmc-access-mgr
-network:
-  ethernets:
-    ${interface}:
-      dhcp4: false
-      dhcp6: false
-  bridges:
-    lanbr0:
-      interfaces: [${interface}]
-      parameters:
-        stp: true
-      dhcp4: no
-      dhcp6: no
-
-  version: 2
-__EOF
+    local interfaces="$@"
+    local ethernets
+    for interface in $interfaces ; do
+        ethernets="$ethernets $(interface=$interface envsubst < ${TOOLDIR}/templates/server/netplan/dmc_ethernet.tmpl)"
+    done
+    interfaces=$(sed 's/[ ][ ]*/,/g' <<< $interfaces)
+    cat < ${TOOLDIR}/templates/server/netplan/30-bridge-config.tmpl | ethernets="$ethernets" interfaces="$interfaces" envsubst > ${NETPLANDIR}/30-bridge-config.yaml
     netplan generate
     netplan apply
 }
@@ -228,18 +271,13 @@ new_client () {
 if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     clear
     echo 'Welcome to this Dali DMC Access Server installer!'
-    echo "Which interface is connected to the DMC?"
-    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo)
-    select dmc_interface in ${interfaces}
-    do
-        if [ -n "$dmc_interface" ] ; then
-            echo "Using interface $dmc_interface"
-            read -p "Is this correct? [yN]" ans
-            case $ans in
-                Y|y) break ;;
-            esac
-        fi
-    done
+    if detect_qotom ; then
+        echo "This appears to be a Qotom interfaces 3 and 4 should be connected to the DMC?"
+        dmc_interfaces="enp3s0 enp4s0"
+    else
+        dmc_interfaces=`select_dmc_interfaces`
+    fi
+    echo "Using interface(s) $dmc_interfaces"
     # If system has a single IPv4, it is selected automatically. Else, ask the user
     if [[ $(ip -4 addr | grep inet | grep -vEc '127(\.[0-9]{1,3}){3}') -eq 1 ]]; then
         ip=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}')
@@ -335,7 +373,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     echo
     echo "DMC Access Server installation is ready to begin."
     read -n1 -r -p "Press any key to continue..."
-    create_dmc_lanbr $dmc_interface
+    create_dmc_lanbr $dmc_interfaces
     # Install a firewall in the rare case where one is not already available
     if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
         if [[ "$os" == "centos" || "$os" == "fedora" ]]; then

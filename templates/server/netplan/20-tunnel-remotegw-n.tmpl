@@ -1,0 +1,8 @@
+network:
+  version: 2
+  tunnels:
+    ${tunnel}:
+      mode: gretap
+      remote: ${clientip}
+      local: ${serverip}
+

@@ -1,0 +1,14 @@
+# This is the network config written by 'dmc-access-mgr
+network:
+  ethernets:
+    ${ethernets}:
+  bridges:
+    lanbr0:
+      interfaces: [${interfaces}]
+      parameters:
+        stp: true
+      dhcp4: no
+      dhcp6: no
+
+  version: 2
+
