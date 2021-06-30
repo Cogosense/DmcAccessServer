@@ -157,7 +157,7 @@ select_dmc_interfaces()
         echo "no DMC interface selected"
         exit
     fi
-    echo "$selected_interfaces"
+    dmc_interfaces="$selected_interfaces"
 }
 
 create_dmc_lanbr() {
@@ -276,7 +276,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
         echo "This appears to be a Qotom interfaces 3 and 4 should be connected to the DMC?"
         dmc_interfaces="enp3s0 enp4s0"
     else
-        dmc_interfaces=`select_dmc_interfaces`
+        select_dmc_interfaces
     fi
     echo "Using interface(s) $dmc_interfaces"
     # If system has a single IPv4, it is selected automatically. Else, ask the user
