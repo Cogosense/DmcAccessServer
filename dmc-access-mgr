@@ -119,23 +119,28 @@ detect_qotom() {
 
 select_wan_interface()
 {
-    echo "which interface is connected to the Internet?"
-    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif")
-    wanif=$(ip route show default | awk '{print $5}')
-    PS3="Interface [$wanif]: "
-    select interface in ${interfaces}
-    do
-        if [ -n "$interface" ] ; then
-            wanif=$interface
+    interfaces=($(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}'))
+    while : ; do
+        wanif=$(ip route show default | awk '{print $5}')
+        local cnt=1
+        echo "which interface is connected to the Internet?"
+        for intf in "${interfaces[@]}"; do
+            echo "$cnt) $intf"
+            let cnt++
+        done
+        read -p "which interface is connected to the Internet [$wanif]: " reply
+        case $reply in
+            "") ;;
+            *) wanif="${interfaces[((reply-1))]}" ;;
+        esac
+        if [ -n "$wanif" ] ; then
+            break
         fi
-        break
     done
 }
 
 select_dmc_interfaces()
 {
-    local wanif=$1
-    shift
     echo "Which interface(s) are connected to the DMC?"
     interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif")
     local selected_interfaces=""
