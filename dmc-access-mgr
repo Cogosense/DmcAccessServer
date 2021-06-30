@@ -123,12 +123,11 @@ select_wan_interface()
     while : ; do
         wanif=$(ip route show default | awk '{print $5}')
         local cnt=1
-        echo "which interface is connected to the Internet?"
         for intf in "${interfaces[@]}"; do
             echo "$cnt) $intf"
             let cnt++
         done
-        read -p "which interface is connected to the Internet [$wanif]: " reply
+        read -p "Which interface is connected to the Internet [$wanif]: " reply
         case $reply in
             "") ;;
             *) wanif="${interfaces[((reply-1))]}" ;;
