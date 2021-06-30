@@ -153,8 +153,8 @@ select_dmc_interfaces()
             fi
             let cnt++
         done
-        echo "$cnt) Done"
-        read -p "Select interfaces toward DMC? [${selected_interfaces:-'none selected'}]" reply
+        echo "$cnt)   Done"
+        read -p "Select interfaces toward DMC? [${selected_interfaces:-none selected}]" reply
         case $reply in
             $cnt) break 2 ;;
             *) 
