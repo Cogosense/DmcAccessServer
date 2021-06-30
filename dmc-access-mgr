@@ -113,7 +113,8 @@ detect_qotom() {
             enp?s0)   ((ifcnt++)) ;;
         esac
     done
-    return [ $ifcnt -eq 4  ];
+    [ $ifcnt -eq 4 ]
+    return $?
 }
 
 select_dmc_interfaces()
