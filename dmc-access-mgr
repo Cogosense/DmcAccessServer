@@ -117,10 +117,27 @@ detect_qotom() {
     return $?
 }
 
+select_wan_interface()
+{
+    echo "which interface is connected to the Internet?"
+    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif")
+    wanif=$(ip route show default | awk '{print $5}')
+    PS3="Interface [$wanif]: "
+    select interface in ${interfaces}
+    do
+        if [ -n "$interface" ] ; then
+            wanif=$interface
+        fi
+        break
+    done
+}
+
 select_dmc_interfaces()
 {
+    local wanif=$1
+    shift
     echo "Which interface(s) are connected to the DMC?"
-    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo)
+    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif")
     local selected_interfaces=""
     select interface in ${interfaces}
     do
@@ -158,6 +175,17 @@ select_dmc_interfaces()
         exit
     fi
     dmc_interfaces="$selected_interfaces"
+}
+
+create_wan_if() {
+    local wanif=$1
+    shift
+    if [ -f ${NETPLANDIR}/01-network-manager-all.yaml ] ; then
+        rm ${NETPLANDIR}/01-network-manager-all.yaml
+    fi
+    cat < ${TOOLDIR}/templates/server/netplan/00-wan-config.tmpl | wanif="$wanif" envsubst > ${NETPLANDIR}/00-wan-config.yaml
+    netplan generate
+    netplan apply
 }
 
 create_dmc_lanbr() {
@@ -274,11 +302,15 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     echo 'Welcome to this Dali DMC Access Server installer!'
     if detect_qotom ; then
         echo "This appears to be a Qotom interfaces 3 and 4 should be connected to the DMC?"
+        wanif='enp1s0'
         dmc_interfaces="enp3s0 enp4s0"
     else
+        select_wan_interface
         select_dmc_interfaces
     fi
-    echo "Using interface(s) $dmc_interfaces"
+    echo "Using WAN interface $wanif"
+    create_wan_if $wanif
+    echo "Using DMC interface(s) $dmc_interfaces"
     # If system has a single IPv4, it is selected automatically. Else, ask the user
     if [[ $(ip -4 addr | grep inet | grep -vEc '127(\.[0-9]{1,3}){3}') -eq 1 ]]; then
         ip=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}')
