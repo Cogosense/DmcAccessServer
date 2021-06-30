@@ -141,37 +141,33 @@ select_wan_interface()
 select_dmc_interfaces()
 {
     echo "Which interface(s) are connected to the DMC?"
-    interfaces=$(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif")
+    interfaces=($(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif"))
     local selected_interfaces=""
-    select interface in ${interfaces}
-    do
-        if [ -n "$interface" ] ; then
-            if grep -q $interface <<< $selected_interfaces ; then
-                selected_interfaces=$(sed "s/$interface//" <<< $selected_interfaces)
+    while : ; do
+        local cnt=1
+        for intf in "${interfaces[@]}"; do
+            if grep -q $intf <<< $selected_interfaces ; then
+                echo "$cnt) * $intf"
             else
-                selected_interfaces="$selected_interfaces $interface"
+                echo "$cnt)   $intf"
             fi
-            set -- $selected_interfaces
-            selected_interfaces="$*"
-            if [ -z "$selected_interfaces" ] ; then
-                PS3="#? "
-            else
-                PS3="$selected_interfaces #? "
-            fi
-            cnt=1
-            for intf in ${interfaces}; do
-                if grep -q $intf <<< $selected_interfaces ; then
-                    echo "$cnt) * $intf"
+            let cnt++
+        done
+        echo "$cnt) Done"
+        read -p "Select interfaces toward DMC? [${selected_interfaces:-'none selected'}]" reply
+        case $reply in
+            $cnt) break 2 ;;
+            *) 
+                interface="${interfaces[((reply-1))]}"
+                if grep -q $interface <<< $selected_interfaces ; then
+                    selected_interfaces=$(sed "s/$interface//" <<< $selected_interfaces)
                 else
-                    echo "$cnt)   $intf"
+                    selected_interfaces="$selected_interfaces $interface"
                 fi
-                ((cnt++))
-            done
-            read -p "Add/remove another interface? [yN]" ans
-            case $ans in
-                N|n) break 2 ;;
-            esac
-        fi
+                set -- $selected_interfaces
+                selected_interfaces="$*"
+                ;;
+        esac
     done
 
     if [ -z "$selected_interfaces" ] ; then
@@ -188,8 +184,10 @@ create_wan_if() {
         rm ${NETPLANDIR}/01-network-manager-all.yaml
     fi
     cat < ${TOOLDIR}/templates/server/netplan/00-wan-config.tmpl | wanif="$wanif" envsubst > ${NETPLANDIR}/00-wan-config.yaml
+    echo "Activating WAN Interface before proceeding with configuration"
     netplan generate
     netplan apply
+    while [ -z "$(ip -4 addr show enp1s0 | awk '/inet/{print $2}')" ] ; do : ; done
 }
 
 create_dmc_lanbr() {
