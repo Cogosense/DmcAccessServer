@@ -203,6 +203,80 @@ create_dmc_lanbr() {
     netplan apply
 }
 
+add_tunnel_to_lanbr() {
+    local tunnel=$1
+    shift
+    if ! grep -q "interfaces:[ ]*\[.*${tunnel}.*]"  ${NETPLANDIR}/30-bridge-config.yaml ; then
+        cat ${NETPLANDIR}/30-bridge-config.yaml | yq e ".network.bridges.lanbr0.interfaces += \"${tunnel}\"" > $$.yaml
+        mv $$.yaml ${NETPLANDIR}/30-bridge-config.yaml
+    fi
+}
+
+del_tunnel_from_lanbr() {
+    local tunnel=$1
+    shift
+    if grep -q "interfaces:[ ]*\[.*${tunnel}.*]"  ${NETPLANDIR}/30-bridge-config.yaml ; then
+        # yq hasn't implemented '-=' support yet
+        interfaces=$(cat ${NETPLANDIR}/30-bridge-config.yaml | yq e ".network.bridges.lanbr0.interfaces" - | sed -r "s/ ?\b${tunnel}\b,?//;s/,,/,/;s/\[ /\[/;s/,]/]/")
+        sed -i.bak "s/interfaces:.*$/interfaces: ${interfaces}/" ${NETPLANDIR}/30-bridge-config.yaml
+        rm ${NETPLANDIR}/30-bridge-config.yaml.bak
+    fi
+}
+
+get_current_lanbr_slaves() {
+    ip link show master lanbr0 | awk '/^[0-9]*: (en|gre)/{print substr($2, 1, length($2)-1)}' | sed 's/@NONE//'
+}
+
+get_next_gretap_device() {
+    slaves=`get_current_lanbr_slaves`
+    cnt=0
+    for (( ; ; cnt++ ))
+    do
+        tunnel=gretap${cnt}
+        if grep -q $tunnel <<< $slaves ; then
+            continue
+        fi
+        echo $tunnel
+        break
+    done
+}
+
+create_tunnel() {
+    local name=$1
+    shift
+    local clientip=$1
+    shift
+    local serverip=$1
+    shift
+
+    if [ ! -f ${NETPLANDIR}/20-tunnel-${name}.yaml ] ; then
+        local tunnel=`get_next_gretap_device`
+        cat < ${TOOLDIR}/templates/server/netplan/20-tunnel-remotegw-n.tmpl | tunnel="$tunnel" clientip="$clientip" serverip="$serverip" envsubst > ${NETPLANDIR}/20-tunnel-${name}.yaml
+        add_tunnel_to_lanbr $tunnel
+        netplan generate
+        netplan apply
+    fi
+}
+
+destroy_tunnel() {
+    local name=$1
+    shift
+    if [ -f ${NETPLANDIR}/20-tunnel-${name}.yaml ] ; then
+        tunnel=$(cat ${NETPLANDIR}/20-tunnel-${name}.yaml | yq e ".network.tunnels" - | head -1 | sed 's/:$//')
+        del_tunnel_from_lanbr $tunnel
+        rm ${NETPLANDIR}/20-tunnel-${name}.yaml
+        netplan generate
+        netplan apply
+    fi
+}
+
+restore_networking_default() {
+    rm ${NETPLANDIR}/*.yaml
+    cat < ${TOOLDIR}/templates/server/netplan/01-network-manager-all.tmpl > ${NETPLANDIR}/01-network-manager-all.yaml
+    netplan generate
+    netplan apply
+}
+
 get_server_ip() {
     echo $(ipcalc -nb ${VPNNET} | awk '/HostMin:/{print $2}')
 }
@@ -244,6 +318,7 @@ new_client () {
     local clientip=$(get_client_ip)
     local netmask=$(ipcalc -nb ${VPNNET} | awk '/Netmask:/{print $2}')
 
+    create_tunnel $client $clientip $serverip
     mkdir -p ${TOOLDIR}/gateways/$client/etc
     # Generate netplan config for gateway
     mkdir ${TOOLDIR}/gateways/$client/etc/netplan
@@ -434,6 +509,7 @@ LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disab
     if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
         apt-get update
         apt-get install -y ipcalc openvpn openssl ca-certificates $firewall
+        snap install yq
     elif [[ "$os" = "centos" ]]; then
         yum install -y epel-release
         yum install -y openvpn openssl ca-certificates tar $firewall
@@ -716,6 +792,7 @@ else
                 # CRL is read with each client connection, when OpenVPN is dropped to nobody
                 chown nobody:"$group_name" ${SERVERDIR}/crl.pem
                 echo
+                destroy_tunnel $client
                 echo "$client revoked!"
             else
                 echo
@@ -760,6 +837,7 @@ else
                 rm -rf ${SERVERDIR}
                 rm -f /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
                 rm -f /etc/sysctl.d/30-openvpn-forward.conf
+                restore_networking_default
                 if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
                     apt-get remove --purge -y openvpn
                 else
