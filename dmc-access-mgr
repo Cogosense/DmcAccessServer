@@ -764,7 +764,6 @@ verb 3" > ${SERVERDIR}/client-common.txt
     echo
     echo "Finished!"
     echo
-    echo "The client configuration is available in:" ~/"$client.ovpn"
     echo "New clients can be added by running this script again."
 else
     clear
