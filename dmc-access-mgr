@@ -231,7 +231,8 @@ get_current_lanbr_slaves() {
 
 get_next_gretap_device() {
     slaves=`get_current_lanbr_slaves`
-    cnt=0
+    # start gretap devices at 1 (0 can't be used)
+    cnt=1
     for (( ; ; cnt++ ))
     do
         tunnel=gretap${cnt}
