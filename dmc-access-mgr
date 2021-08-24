@@ -16,6 +16,8 @@ SERVERDIR=${CFGDIR}/server
 TOOLDIR=$(cd $(dirname $0) && pwd)
 : ${NETPLANDIR:=/etc/netplan}
 
+[ -f $TOOLDIR/.snmpauth ] && . $TOOLDIR/.snmpauth
+
 # Detect Debian users running the script with "sh" instead of bash
 if readlink /proc/$$/exe | grep -q "dash"; then
     echo 'This installer needs to be run with "bash", not "sh".'
@@ -313,6 +315,18 @@ get_client_ip() {
     done
 }
 
+setup_server_snmpd () {
+    local user="$1"
+    local password="$2"
+    shift 2
+
+    apt install snmpd snmp libsnmp-dev
+    systemctl stop snmpd
+    sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Concentrator/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
+    net-snmp-create-v3-user -ro -A "$password" -a MD5 -X "$password" -x DES "$user"
+    systemctl start snmpd
+}
+
 new_client () {
     local serverip=$(get_server_ip)
     local clientip=$(get_client_ip)
@@ -354,6 +368,8 @@ new_client () {
     mkdir ${TOOLDIR}/gateways/$client/etc/openvpn
     cp ${CLIENTDIR}/"$client".ovpn ${TOOLDIR}/gateways/$client/etc/openvpn/"$client".conf
     (
+        echo "SNMP_USER=\"$snmp_user\""
+        echo "SNMP_PASSWORD=\"$snmp_password\""
         cat ${TOOLDIR}/templates/client/selfextract_header
         tar cz -C ${TOOLDIR}/gateways/$client .
     ) > ${TOOLDIR}/gateways/install_$client.shar
@@ -485,8 +501,24 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_client")
     [[ -z "$client" ]] && client="gateway"
     echo
+    echo "Enter a user name for SNMPv3 monitoring:"
+    read -p "SNMP user name [dali]: " unsanitized_snmp_user
+    # Allow a limited set of characters to avoid conflicts
+    snmp_user=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_user")
+    [[ -z "$snmp_user" ]] && snmp_user="dali"
+    echo "Using SNMP user name (on server and gateways for both authentication and privacy): \"$snmp_user\""
+    echo
+    echo "Enter a password for SNMPv3 monitoring:"
+    read -p "SNMP password [dali1234]: " unsanitized_snmp_password
+    # Allow a limited set of characters to avoid conflicts
+    snmp_password=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_password")
+    [[ -z "$snmp_password" ]] && snmp_password="dali1234"
+    echo "Using SNMP password (on server and gateways for both authentication and privacy): \"$snmp_password\""
+    echo
     echo "DMC Access Server installation is ready to begin."
     read -n1 -r -p "Press any key to continue..."
+    echo "snmp_user=\"$snmp_user\"" > $TOOLDIR/.snmpauth
+    echo "snmp_password=\"$snmp_password\"" >> $TOOLDIR/.snmpauth
     create_dmc_lanbr $dmc_interfaces
     # Install a firewall in the rare case where one is not already available
     if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
@@ -721,6 +753,8 @@ comp-lzo
 verb 3" > ${SERVERDIR}/client-common.txt
     # Enable and start the OpenVPN service
     systemctl enable --now openvpn-server@server.service
+    # Setup SNMP monitoring
+    setup_server_snmpd "$snmp_user" "$snmp_password"
     # Generates the custom client.ovpn
     new_client
     echo

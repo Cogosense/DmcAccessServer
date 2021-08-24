@@ -95,5 +95,11 @@ service restart openvpn
 netplan generate
 netplan apply
 
+apt install snmpd snmp libsnmp-dev
+systemctl stop snmpd
+sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Gateway/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
+net-snmp-create-v3-user -ro -A "${SNMP_PASSWORD}" -a MD5 -X "${SNMP_PASSWORD}" -x DES "${SNMP_USER}"
+systemctl start snmpd
+
 exit 0
 __EOF__
