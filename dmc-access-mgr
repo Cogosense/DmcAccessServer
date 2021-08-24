@@ -501,24 +501,24 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_client")
     [[ -z "$client" ]] && client="gateway"
     echo
-    echo "Enter a user name for SNMPv3 monitoring:"
-    read -p "SNMP user name [dali]: " unsanitized_snmp_user
-    # Allow a limited set of characters to avoid conflicts
-    snmp_user=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_user")
-    [[ -z "$snmp_user" ]] && snmp_user="dali"
-    echo "Using SNMP user name (on server and gateways for both authentication and privacy): \"$snmp_user\""
-    echo
-    echo "Enter a password for SNMPv3 monitoring:"
-    read -p "SNMP password [dali1234]: " unsanitized_snmp_password
-    # Allow a limited set of characters to avoid conflicts
-    snmp_password=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_password")
-    [[ -z "$snmp_password" ]] && snmp_password="dali1234"
-    echo "Using SNMP password (on server and gateways for both authentication and privacy): \"$snmp_password\""
-    echo
+    if [ ! -f $TOOLDIR/.snmpauth ] ; then
+        echo "Enter a user name for SNMPv3 monitoring:"
+        read -p "SNMP user name [dali]: " unsanitized_snmp_user
+        # Allow a limited set of characters to avoid conflicts
+        snmp_user=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_user")
+        [[ -z "$snmp_user" ]] && snmp_user="dali"
+        echo "Using SNMP user name (on server and gateways for both authentication and privacy): \"$snmp_user\""
+        echo
+        echo "Enter a password for SNMPv3 monitoring:"
+        read -p "SNMP password [dali1234]: " unsanitized_snmp_password
+        # Allow a limited set of characters to avoid conflicts
+        snmp_password=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_password")
+        [[ -z "$snmp_password" ]] && snmp_password="dali1234"
+        echo "Using SNMP password (on server and gateways for both authentication and privacy): \"$snmp_password\""
+        echo
+    fi
     echo "DMC Access Server installation is ready to begin."
     read -n1 -r -p "Press any key to continue..."
-    echo "snmp_user=\"$snmp_user\"" > $TOOLDIR/.snmpauth
-    echo "snmp_password=\"$snmp_password\"" >> $TOOLDIR/.snmpauth
     create_dmc_lanbr $dmc_interfaces
     # Install a firewall in the rare case where one is not already available
     if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
@@ -753,8 +753,12 @@ comp-lzo
 verb 3" > ${SERVERDIR}/client-common.txt
     # Enable and start the OpenVPN service
     systemctl enable --now openvpn-server@server.service
-    # Setup SNMP monitoring
-    setup_server_snmpd "$snmp_user" "$snmp_password"
+    if [ ! -f $TOOLDIR/.snmpauth ] ; then
+        # Setup SNMP monitoring
+        setup_server_snmpd "$snmp_user" "$snmp_password"
+        echo "snmp_user=\"$snmp_user\"" > $TOOLDIR/.snmpauth
+        echo "snmp_password=\"$snmp_password\"" >> $TOOLDIR/.snmpauth
+    fi
     # Generates the custom client.ovpn
     new_client
     echo
