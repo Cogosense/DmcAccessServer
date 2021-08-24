@@ -69,14 +69,15 @@ read -n1 -r -p "Press any key to continue..."
 
 if [ $opt_d == 'yes' ] ; then
     echo "Uninstalling gateway"
+    mv /etc/netplan/01-network-manager-all.yaml.save /etc/netplan/01-network-manager-all.yaml
     for yaml in /etc/netplan/*.yaml ; do
         case $yaml in
-            00*) ;;
+            01*) ;;
             *) rm $yaml ;;
         esac
     done
     for openvpnconf in /etc/openvpn/*.conf; do
-        if [ -e $openvp1nconf ] ; then
+        if [ -e $openvpnconf ] ; then
             service=$(basename -s .conf ${openvpnconf}).service
             systemctl stop $service
             systemctl disable $service
@@ -85,21 +86,21 @@ if [ $opt_d == 'yes' ] ; then
     done
     ip link del lanbr0
     ip link del gretap1
+    apt remove -y snmpd snmp libsnmp-dev
 else
     sed '0,/^__EOF__$/d' $0 | tar xz -C /
-    apt install -y openssh-server
+    mv /etc/netplan/01-network-manager-all.yaml /etc/netplan/01-network-manager-all.yaml.save
+    apt install -y openssh-server snmpd snmp libsnmp-dev
+    systemctl stop snmpd
+    sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Gateway/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
+    net-snmp-create-v3-user -ro -A "${SNMP_PASSWORD}" -a MD5 -X "${SNMP_PASSWORD}" -x DES "${SNMP_USER}"
+    systemctl start snmpd
 fi
 
 systemctl daemon-reload
 service restart openvpn
 netplan generate
 netplan apply
-
-apt install snmpd snmp libsnmp-dev
-systemctl stop snmpd
-sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Gateway/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
-net-snmp-create-v3-user -ro -A "${SNMP_PASSWORD}" -a MD5 -X "${SNMP_PASSWORD}" -x DES "${SNMP_USER}"
-systemctl start snmpd
 
 exit 0
 __EOF__
