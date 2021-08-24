@@ -320,7 +320,7 @@ setup_server_snmpd () {
     local password="$2"
     shift 2
 
-    apt install snmpd snmp libsnmp-dev
+    apt install -y snmpd snmp libsnmp-dev
     systemctl stop snmpd
     sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Concentrator/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
     net-snmp-create-v3-user -ro -A "$password" -a MD5 -X "$password" -x DES "$user"
