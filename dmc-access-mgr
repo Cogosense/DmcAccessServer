@@ -209,7 +209,7 @@ add_tunnel_to_lanbr() {
     local tunnel=$1
     shift
     if ! grep -q "interfaces:[ ]*\[.*${tunnel}.*]"  ${NETPLANDIR}/30-bridge-config.yaml ; then
-        cat ${NETPLANDIR}/30-bridge-config.yaml | yq e ".network.bridges.lanbr0.interfaces += \"${tunnel}\"" > $$.yaml
+        cat ${NETPLANDIR}/30-bridge-config.yaml | yq e ".network.bridges.lanbr0.interfaces += \"${tunnel}\"" - > $$.yaml
         mv $$.yaml ${NETPLANDIR}/30-bridge-config.yaml
     fi
 }
