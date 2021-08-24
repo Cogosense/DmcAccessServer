@@ -69,7 +69,9 @@ read -n1 -r -p "Press any key to continue..."
 
 if [ $opt_d == 'yes' ] ; then
     echo "Uninstalling gateway"
-    mv /etc/netplan/01-network-manager-all.yaml.save /etc/netplan/01-network-manager-all.yaml
+    if [ -f /etc/netplan/01-network-manager-all.yaml.save ] ; then
+        mv /etc/netplan/01-network-manager-all.yaml.save /etc/netplan/01-network-manager-all.yaml
+    fi
     for yaml in /etc/netplan/*.yaml ; do
         case $yaml in
             01*) ;;
@@ -89,7 +91,9 @@ if [ $opt_d == 'yes' ] ; then
     apt remove -y snmpd snmp libsnmp-dev
 else
     sed '0,/^__EOF__$/d' $0 | tar xz -C /
-    mv /etc/netplan/01-network-manager-all.yaml /etc/netplan/01-network-manager-all.yaml.save
+    if [ -f /etc/netplan/01-network-manager-all.yaml ] ; then
+        mv /etc/netplan/01-network-manager-all.yaml /etc/netplan/01-network-manager-all.yaml.save
+    fi
     apt install -y openssh-server snmpd snmp libsnmp-dev
     systemctl stop snmpd
     sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Gateway/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
