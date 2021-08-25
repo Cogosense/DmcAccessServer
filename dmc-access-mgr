@@ -393,7 +393,7 @@ save_server_config() {
     echo
     echo "use the following command to import it to the standby host: "
     echo
-    echo "        sudo ./dmc-access-mgr -r $tarfile"
+    echo "        sudo ./dmc-access-mgr -r ~/$tarfile"
 }
 
 restore_server_config() {
@@ -406,7 +406,7 @@ restore_server_config() {
         rm -rf $CFGDIR.bak
         rm -rf $NETPLANDIR.bak
         mv $CFGDIR $CFGDIR.bak
-        mv NETPLANDIR NETPLANDIR.bak
+        mv $NETPLANDIR $NETPLANDIR.bak
         cp -a $SVRSTATEDIR/openvpn $CFGDIR
         cp -a $SVRSTATEDIR/netplan $NETPLANDIR
         if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
