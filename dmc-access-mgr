@@ -386,9 +386,9 @@ save_server_config() {
     if [ -n "$host" ] ; then
         echo "Please enter the password for \"dali\" on the standby host"
         scp $tarfile dali@$host:
-        echo "state archive $tarfile created and copied to the standby host dali@$host"
+        echo "state archive \"$tarfile\" created and copied to the standby host dali@$host"
     else
-        echo "state archive $tarfile created, please copy it to the standby host"
+        echo "state archive \"$tarfile\" created, please copy it to the standby host"
     fi
     echo
     echo "use the following command to import it to the standby host: "
@@ -412,6 +412,8 @@ restore_server_config() {
         if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
             netplan generate
             netplan apply
+            # Restart the OpenVPN service
+            systemctl restart openvpn-server@server.service
         fi
     fi
 }
