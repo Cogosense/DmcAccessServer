@@ -399,7 +399,9 @@ save_server_config() {
 restore_server_config() {
     local tarfile=$1
     shift
-    rm -rf $SVRSTATEDIR
+    rm -rf $SVRSTATEDIR/netplan
+    rm -rf $SVRSTATEDIR/openvpn
+    cp ${SERVERDIR}/server.conf $SVRSTATEDIR/server.conf
     mkdir -p $SVRSTATEDIR
     if [ -f "$tarfile" ] ; then
         tar xp -C $TOOLDIR -f $tarfile
@@ -409,6 +411,7 @@ restore_server_config() {
         mv $NETPLANDIR $NETPLANDIR.bak
         cp -a $SVRSTATEDIR/openvpn $CFGDIR
         cp -a $SVRSTATEDIR/netplan $NETPLANDIR
+        cp $SVRSTATEDIR/server.conf ${SERVERDIR}/server.conf
         if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
             netplan generate
             netplan apply
@@ -627,14 +630,14 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
         # Allow a limited set of characters to avoid conflicts
         snmp_user=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_user")
         [[ -z "$snmp_user" ]] && snmp_user="dali"
-        echo "Using SNMP user name (on server and gateways for both authentication and privacy): \"$snmp_user\""
+        echo "Using SNMP user name \"$snmp_user\" (on both server and gateways for both authentication and privacy)"
         echo
         echo "Enter a password for SNMPv3 monitoring:"
         read -p "SNMP password [dali1234]: " unsanitized_snmp_password
         # Allow a limited set of characters to avoid conflicts
         snmp_password=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_snmp_password")
         [[ -z "$snmp_password" ]] && snmp_password="dali1234"
-        echo "Using SNMP password (on server and gateways for both authentication and privacy): \"$snmp_password\""
+        echo "Using SNMP password \"$snmp_password\" (on both server and gateways for both authentication and privacy)"
         echo
     fi
     echo "DMC Access Server installation is ready to begin."
@@ -767,6 +770,7 @@ server ${VPNSERVER}" > ${SERVERDIR}/server.conf
 cipher AES-256-CBC
 user nobody
 group $group_name
+log /var/log/openvpn/openvpn.log
 persist-key
 persist-tun
 verb 3
