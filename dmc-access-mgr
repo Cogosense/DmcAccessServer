@@ -28,9 +28,11 @@ usage() {
 
 "$progname" manage the DMC VPN server and remote gateways
 
-Usage $0 [OPTIONS]
+Usage: sudo $0 [OPTIONS]
+       $0 -h
 
-When run without options $progname runs in an interactive mode.
+When run without options $progname runs in an interactive mode. The use
+of "sudo" is required for all actions except the help screen.
 
 The first time it is run, the OVPN server, SNMP server, SSH server and the
 network topology will be initialized and a first gateway config created.
@@ -48,9 +50,13 @@ the setup process on the standby side, and will render the standby a clone of th
 active DMC access server. The initial setup is required to ensure the necessary
 software packages are installed.
 
+OPTIONS:
+
+ -h               This help screen (does not require sudo)
  -s  [IP|TARFILE] Save server config directly to IP address, or save to TARFILE
                   for manual transfer to standby system.
  -r  [TARFILE]    Restore DMC access server config from the TARFILE.
+ -x               Turn on bash shell tracing.
 
 _EOF
 }
@@ -121,16 +127,18 @@ if ! grep -q sbin <<< "$PATH"; then
     exit
 fi
 
-if [[ "$EUID" -ne 0 ]]; then
-    echo "This installer needs to be run with superuser privileges."
-    exit
-fi
-
 if [[ ! -e /dev/net/tun ]] || ! ( exec 7<>/dev/net/tun ) 2>/dev/null; then
     echo "The system does not have the TUN device available.
 TUN needs to be enabled before running this installer."
     exit
 fi
+
+isroot() {
+    if [[ "$EUID" -ne 0 ]]; then
+        echo "This installer needs to be run with superuser privileges."
+        exit
+    fi
+}
 
 ip2dec() {
     declare -i a b c d
@@ -489,14 +497,17 @@ new_client () {
 # MAIN starts here
 # Process options
 
-while getopts rsh c ; do
+while getopts hr:s:x c ; do
     case $c in
-        r) opt_r="$OPTARG" ; save_server_config $opt_r ; exit $? ;;
-        s) opt_s="$OPTARG" ; restore_server_config $opt_s ; exit $? ;;
         h) usage ; exit 0 ;;
+        r) opt_r="$OPTARG" ; isroot ; restore_server_config $opt_r ; exit $? ;;
+        s) opt_s="$OPTARG" ; isroot ; save_server_config $opt_s ; exit $? ;;
+        x) set -x ;;
         \?) usage ; >&2 echo"unknown option: $c" ; exit 1 ;;
     esac
 done
+
+isroot
 
 if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     clear
