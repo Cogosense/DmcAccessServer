@@ -14,9 +14,49 @@ CCDDIR=${CFGDIR}/ccd
 CLIENTDIR=${CFGDIR}/client
 SERVERDIR=${CFGDIR}/server
 TOOLDIR=$(cd $(dirname $0) && pwd)
+STATEDIR=$TOOLDIR/state
+GWYSTATEDIR=$STATEDIR/gateways
+SVRSTATEDIR=$STATEDIR/server
 : ${NETPLANDIR:=/etc/netplan}
+progname=$(basename $0)
 
-[ -f $TOOLDIR/.snmpauth ] && . $TOOLDIR/.snmpauth
+opt_s=''
+opt_r=''
+
+usage() {
+    cat << _EOF
+
+"$progname" manage the DMC VPN server and remote gateways
+
+Usage $0 [OPTIONS]
+
+When run without options $progname runs in an interactive mode.
+
+The first time it is run, the OVPN server, SNMP server, SSH server and the
+network topology will be initialized and a first gateway config created.
+
+Subsequent runs with no options can be used to add gateways and to revoke
+gateways.
+
+The following options can be used to mirror the configuration to a cold standby
+DMC access server. The active server should be saved after any changes to the
+remote gateway configuration, then restored on the standby side.
+
+NOTE: On the standby side, a saved configuration should be restored  after
+$progname has been run once. This will overwrite the initial gateway created in
+the setup process on the standby side, and will render the standby a clone of the
+active DMC access server. The initial setup is required to ensure the necessary
+software packages are installed.
+
+ -s  [IP|TARFILE] Save server config directly to IP address, or save to TARFILE
+                  for manual transfer to standby system.
+ -r  [TARFILE]    Restore DMC access server config from the TARFILE.
+
+_EOF
+}
+
+[ -d $STATEDIR ] || mkdir $STATEDIR
+[ -f $STATEDIR/.snmpauth ] && . $STATEDIR/.snmpauth
 
 # Detect Debian users running the script with "sh" instead of bash
 if readlink /proc/$$/exe | grep -q "dash"; then
@@ -316,6 +356,58 @@ get_client_ip() {
     done
 }
 
+save_server_config() {
+    local dest=$1
+    shift
+    case "$dest" in
+        *.tar|*.tar.gz|*.tar.bz2|*.tar.xz) tarfile="$dest" ;;
+        *)
+            if nc -zw 5 "$dest" 22 ; then
+                tarfile="state-$(date --iso-8601=minutes).tar.gz"
+                host="$dest"
+            else
+                tarfile="$dest.tar.gz"
+            fi
+            ;;
+    esac
+    rm -rf $SVRSTATEDIR
+    mkdir -p $SVRSTATEDIR
+    cp -a $CFGDIR $SVRSTATEDIR
+    cp -a $NETPLANDIR $SVRSTATEDIR
+    tar -C $TOOLDIR -pzf "$tarfile" state
+    if [ -n "$host" ] ; then
+        echo "Please enter the password for \"dali\" on the standby host"
+        scp $tarfile dali@$host:
+        echo "state archive $tarfile created and copied to the standby host dali@$host"
+    else
+        echo "state archive $tarfile created, please copy it to the standby host"
+    fi
+    echo
+    echo "use the following command to import it to the standby host: "
+    echo
+    echo "        sudo ./dmc-access-mgr -r $tarfile"
+}
+
+restore_server_config() {
+    local tarfile=$1
+    shift
+    rm -rf $SVRSTATEDIR
+    mkdir -p $SVRSTATEDIR
+    if [ -f "$tarfile" ] ; then
+        tar xp -C $TOOLDIR -f $tarfile
+        rm -rf $CFGDIR.bak
+        rm -rf $NETPLANDIR.bak
+        mv $CFGDIR $CFGDIR.bak
+        mv NETPLANDIR NETPLANDIR.bak
+        cp -a $SVRSTATEDIR/openvpn $CFGDIR
+        cp -a $SVRSTATEDIR/netplan $NETPLANDIR
+        if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
+            netplan generate
+            netplan apply
+        fi
+    fi
+}
+
 setup_server_snmpd () {
     local user="$1"
     local password="$2"
@@ -334,9 +426,9 @@ new_client () {
     local netmask=$(ipcalc -nb ${VPNNET} | awk '/Netmask:/{print $2}')
 
     create_tunnel $client $clientip $serverip
-    mkdir -p ${TOOLDIR}/gateways/$client/etc
+    mkdir -p ${GWYSTATEDIR}/$client/etc
     # Generate netplan config for gateway
-    mkdir ${TOOLDIR}/gateways/$client/etc/netplan
+    mkdir ${GWYSTATEDIR}/$client/etc/netplan
     for template in ${TOOLDIR}/templates/client/netplan/*.tmpl ; do
         if [ -e $template ] ; then
             config=$(basename -s .tmpl $template).yaml
@@ -344,7 +436,7 @@ new_client () {
                 export CLIENTIP=$clientip
                 export SERVERIP=$serverip
                 cat $template | envsubst
-            ) > ${TOOLDIR}/gateways/$client/etc/netplan/$config
+            ) > ${GWYSTATEDIR}/$client/etc/netplan/$config
         fi
     done
 
@@ -366,25 +458,25 @@ new_client () {
     } > ${CLIENTDIR}/"$client".ovpn
     echo "ifconfig-push ${clientip} ${netmask}" > ${CCDDIR}/"$client"
 
-    mkdir ${TOOLDIR}/gateways/$client/etc/openvpn
-    cp ${CLIENTDIR}/"$client".ovpn ${TOOLDIR}/gateways/$client/etc/openvpn/"$client".conf
+    mkdir ${GWYSTATEDIR}/$client/etc/openvpn
+    cp ${CLIENTDIR}/"$client".ovpn ${GWYSTATEDIR}/$client/etc/openvpn/"$client".conf
     (
         echo '#!/bin/bash'
         echo "SNMP_USER=\"$snmp_user\""
         echo "SNMP_PASSWORD=\"$snmp_password\""
         cat ${TOOLDIR}/templates/client/selfextract_header
-        tar cz -C ${TOOLDIR}/gateways/$client .
-    ) > ${TOOLDIR}/gateways/install_$client.shar
+        tar cz -C ${GWYSTATEDIR}/$client .
+    ) > ${GWYSTATEDIR}/install_$client.shar
 
     if [ -n "$SUDO_UID" ] ; then
-        chown $SUDO_UID:$SUDO_GID ${TOOLDIR}/gateways/$client
-        chown $SUDO_UID:$SUDO_GID ${TOOLDIR}/gateways/install_$client.shar
+        chown $SUDO_UID:$SUDO_GID ${GWYSTATEDIR}/$client
+        chown $SUDO_UID:$SUDO_GID ${GWYSTATEDIR}/install_$client.shar
     fi
-    chmod a+x ${TOOLDIR}/gateways/install_${client}.shar
+    chmod a+x ${GWYSTATEDIR}/install_${client}.shar
 
     echo "The install script for the remote gateway \"${client}\" is at:"
     echo ""
-    echo "  ${TOOLDIR}/gateways/install_${client}.shar"
+    echo "  ${GWYSTATEDIR}/install_${client}.shar"
     echo ""
     echo "Copy this file to the gateway and install it by running the command:"
     echo ""
@@ -392,6 +484,19 @@ new_client () {
     echo "    sudo ./install_${client}.shar"
     echo ""
 }
+
+
+# MAIN starts here
+# Process options
+
+while getopts rsh c ; do
+    case $c in
+        r) opt_r="$OPTARG" ; save_server_config $opt_r ; exit $? ;;
+        s) opt_s="$OPTARG" ; restore_server_config $opt_s ; exit $? ;;
+        h) usage ; exit 0 ;;
+        \?) usage ; >&2 echo"unknown option: $c" ; exit 1 ;;
+    esac
+done
 
 if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     clear
@@ -503,7 +608,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<< "$unsanitized_client")
     [[ -z "$client" ]] && client="gateway"
     echo
-    if [ ! -f $TOOLDIR/.snmpauth ] ; then
+    if [ ! -f $STATEDIR/.snmpauth ] ; then
         echo "Enter a user name for SNMPv3 monitoring:"
         read -p "SNMP user name [dali]: " unsanitized_snmp_user
         # Allow a limited set of characters to avoid conflicts
@@ -755,11 +860,11 @@ comp-lzo
 verb 3" > ${SERVERDIR}/client-common.txt
     # Enable and start the OpenVPN service
     systemctl enable --now openvpn-server@server.service
-    if [ ! -f $TOOLDIR/.snmpauth ] ; then
+    if [ ! -f $STATEDIR/.snmpauth ] ; then
         # Setup SNMP monitoring
         setup_server_snmpd "$snmp_user" "$snmp_password"
-        echo "snmp_user=\"$snmp_user\"" > $TOOLDIR/.snmpauth
-        echo "snmp_password=\"$snmp_password\"" >> $TOOLDIR/.snmpauth
+        echo "snmp_user=\"$snmp_user\"" > $STATEDIR/.snmpauth
+        echo "snmp_password=\"$snmp_password\"" >> $STATEDIR/.snmpauth
     fi
     # Generates the custom client.ovpn
     new_client

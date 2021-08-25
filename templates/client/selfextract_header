@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install script created by dmc-access-mgr
-
+progname=$(basename $0)
 opt_f='no'
 opt_d='no'
 

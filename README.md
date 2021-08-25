@@ -125,7 +125,7 @@ if displayed.
 
     The install script for the remote gateway "gateway-8" is at:
 
-      /home/sysadmin/DmcAccessServer/gateways/install_gateway-8.shar
+      /home/sysadmin/DmcAccessServer/state/gateways/install_gateway-8.shar
 
     Copy this file to the gateway and install it by running the command:
 
