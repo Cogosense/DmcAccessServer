@@ -382,7 +382,7 @@ save_server_config() {
     mkdir -p $SVRSTATEDIR
     cp -a $CFGDIR $SVRSTATEDIR
     cp -a $NETPLANDIR $SVRSTATEDIR
-    tar -C $TOOLDIR -pzf "$tarfile" state
+    tar cp -C $TOOLDIR -zf "$tarfile" state
     if [ -n "$host" ] ; then
         echo "Please enter the password for \"dali\" on the standby host"
         scp $tarfile dali@$host:
