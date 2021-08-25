@@ -38,7 +38,8 @@ media.
 Reboot and login, start a terminal and do a software update:
 
     sudo apt update
-    sudo apt -y upgrade
+    sudo apt -y upgrade -y
+    sudo apt install -y git
 
 ## Initial Installation of the DMC Access Server
 
@@ -54,31 +55,27 @@ and start the DMC access manager configuration process.
     sudo ./dmc-access-mgr
 
 The first time the `dmc-access-mgr` tool is run the server will be setup and the
-first gateway configuration be created.
+first gateway configuration will be created.
 
     Welcome to this Dali DMC Access Server installer!
-    Which interface is connected to the DMC?
-    1) ens32
-    2) ens33
-    #?2
-
-    Using interface ens33
-    Is this correct? [yN]y
-
-    Which IPv4 address should be used?
-         1) 10.10.251.25
-    IPv4 address [1]:
+    The network interfaces will be reconfigured first to use netplan and networkd
+    This appears to be a Qotom network applicance
+        interface 1 should be connected to the Internet/Modem
+        interfaces 3 and 4 should be connected to the DMC
+    Using WAN interface enp1s0
+    Using DMC interface(s) enp3s0 enp4s0
+    Activating WAN Interface before proceeding with configuration
 
     This server is behind NAT. What is the public IPv4 address or hostname?
-    Public IPv4 address / hostname [206.191.105.211]:
+    Public IPv4 address / hostname [23.16.15.59]: 
 
     Which protocol should DMC Access Server use?
        1) UDP (recommended)
        2) TCP
-    Protocol [1]:
+    Protocol [1]: 
 
     What port should DMC Access Server listen to?
-    Port [1194]:
+    Port [1194]: 
 
     Select a DNS server for the gateways:
        1) Current system resolvers
@@ -87,10 +84,18 @@ first gateway configuration be created.
        4) OpenDNS
        5) Quad9
        6) AdGuard
-    DNS server [1]:
+    DNS server [1]: 
 
     Enter a name for the first gateway:
-    Name [gateway]: gateway-1
+    Name [ateway]: gateway1
+
+    Enter a user name for SNMPv3 monitoring:
+    SNMP user name [dali]: 
+    Using SNMP user name "dali" (on both server and gateways for both authentication and privacy)
+
+    Enter a password for SNMPv3 monitoring:
+    SNMP password [dali1234]: 
+    Using SNMP password "dali1234" (on both server and gateways for both authentication and privacy)
 
     DMC Access Server installation is ready to begin.
     Press any key to continue...
@@ -98,7 +103,7 @@ first gateway configuration be created.
 ### Access Server Notes
 
 If the Access Server is running in a VM, the host OS must place the physical NIC associated
-the guest virtual interface toward the DMC into a promiscuous mode. The Access Server is
+with the guest virtual interface toward the DMC into a promiscuous mode. The Access Server is
 running a bridge device on this interface and requires that all packets received by the
 network interface are delivered to the bridge for switching.
 
@@ -137,12 +142,11 @@ a network connection.
 
 ## Installing A Remote Gateway
 
-
 Now copy the gateway installer file created by the DMC access server
 to the gateway and run it. (If a USB flash drive was used, the file may need to be
 made executable again).
 
-    sudo ./install_gateway-8.shar
+    sudo ./install_gateway1.shar
 
 ### Gateway Installion Notes
 
@@ -154,6 +158,46 @@ the network configuration will not be correct afterwards.
 to install. The -d option can be use to perform an uninstalltion of the gateway. After
 the gateway is uninstalled, the installation should succeed.
 
+## Creating a Standby Access Server
+
+A cold standby DMC access server is supported. The configuration of the active DMC
+access server is manually copied to the standby DMC access server and applied using
+the steps described in this section.
+
+Both servers must be reachable at the same public IP address. The switching of the
+address mapping between the public IP and the DMC access IP address is outside the
+scope of the DMC access server solution, this solution just assumes it will be
+correctly handled.
+
+Use the following procedures to establish a secondary standby DMC access server:
+
+1. Create a primary and a secondary DMC access server using the process described in
+the section __Initial Installation of the DMC Access Server__ in this document. All
+questions in the setup wizard should be answered identically except for
+__Which IPv4 address should be used?__, this can be different.
+
+2. After each configuration change on the primary unit (adding or revoking a gateway),
+run the following command:
+
+    sudo ./dmc-access-mgr -s <IP ADDR OF STANDBY>
+
+The command will package the state into a tarball and copy it to the standby. It then
+prints the command to be run on the standby to restore the state.
+
+3. Login to the standby DMC access server and run the command indicated in step 2, it
+will be something like this:
+
+    sudo ./dmc-access-mgr -r ~/state-2021-08-25T00-20-07-00.tar.gz
+
+### Standby Access Server Notes
+
+If the standby server is not accessible by IP, The state can be transfered by file,
+modify the command to create the state archive to specify a file name instead.
+
+    sudo ./dmc-access-mgr -s <TARFILENAME>
+
+The tarfile can now be transferred using a USB drive or similar method. The procedure
+to import the file on the standby side is the same.
 
 ## What Does The DMC Access Server Do?
 
@@ -185,10 +229,10 @@ The DMC Access Server consists of two parts:
 The Access Server consists of an OpenVPN server that creates an OpenVPN tunnel and a
 GRETAP tunnel per configured gateway, The GRETAP tunnel is added as a member
 of the bridge that incorporates the physical interface that is connected to the DMC.
-THe management script in this repo is used to create an OVPN file and a NETPLAN
-configuration for a remote gateway. This is bundled into a self extracting executable
-installer script. The management script also adds the associated GRETAP tunnel into
-the Access Server bridge connected to the DMC.
+THe management script in this repo is used to create an OVPN configuration file and a
+NETPLAN configuration for a remote gateway. This is bundled into a self extracting
+executable installer script. The management script also adds the associated GRETAP
+tunnel into the Access Server bridge connected to the DMC.
 
 The installer script is copied to the gateway device and executed. This creates an
 automatic OpenVPN connection service and attaches the end of the GRETAP tunnel to
