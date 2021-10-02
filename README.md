@@ -18,7 +18,7 @@ The interfaces are assigned as follows:
 This applies to both server and gateway machines.
 
 Equipment needed:
-1. Ubuntu 20.04 USB installation media
+1. Ubuntu 20.04 [USB installation media](https://ubuntu.com/tutorials/create-a-usb-stick-on-ubuntu#1-overview)
 2. USB mouse, USB Keyboard and VGA monitor.
 3. Network connection.
 
@@ -39,7 +39,7 @@ Reboot and login, start a terminal and do a software update:
 
     sudo apt update
     sudo apt -y upgrade -y
-    sudo apt install -y git
+    sudo apt install -y git openssh-server
 
 ## Initial Installation of the DMC Access Server
 
