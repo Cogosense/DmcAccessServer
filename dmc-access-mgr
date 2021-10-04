@@ -930,6 +930,7 @@ setup_server_snmpd () {
 }
 
 new_client () {
+    activate_wanif='yes'
     local serverip=$(get_server_ip)
     local clientip=$(get_client_ip)
     local netmask=$(ipcalc -nb ${VPNNET} | awk '/Netmask:/{print $2}')
