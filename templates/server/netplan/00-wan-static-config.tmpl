@@ -1,0 +1,16 @@
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${wanif}:
+      dhcp4: no
+      dhcp6: no
+      addresses:
+        - ${address}/${netmask}
+      gateway4: ${gateway}
+      routes:
+        - to: 0.0.0.0/0
+          via: ${gateway}
+          metric: 10
+      nameservers:
+          addresses: [${nameservers}]
