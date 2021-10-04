@@ -734,14 +734,14 @@ create_wanif() {
 
 create_dmc_lanbr() {
     local interfaces="$@"
-    local ethernets
     (
         IFS=,
+        local ethernets
         for interface in $interfaces ; do
             ethernets="$ethernets $(interface=$interface envsubst < ${TOOLDIR}/templates/server/netplan/dmc_ethernet.tmpl)"
         done
+        cat < ${TOOLDIR}/templates/server/netplan/30-bridge-config.tmpl | ethernets="$ethernets" interfaces="$interfaces" envsubst > ${NETPLANDIR}/30-bridge-config.yaml
     )
-    cat < ${TOOLDIR}/templates/server/netplan/30-bridge-config.tmpl | ethernets="$ethernets" interfaces="$interfaces" envsubst > ${NETPLANDIR}/30-bridge-config.yaml
     netplan generate
     netplan apply
 }
