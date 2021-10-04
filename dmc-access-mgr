@@ -19,6 +19,7 @@ GWYSTATEDIR=$STATEDIR/gateways
 SVRSTATEDIR=$STATEDIR/server
 : ${NETPLANDIR:=/etc/netplan}
 progname=$(basename $0)
+activate_wanif='yes'
 
 opt_s=''
 opt_r=''
@@ -213,7 +214,7 @@ ipv4address_get() {
 # - proto
 #
 wanifproto_get() {
-    local proto=""
+    proto=""
     while : ; do
         read -p "Will the WAN interface be manually or automatically configured? (static|dhcp) " proto
         case $proto in
@@ -249,6 +250,7 @@ wanifproto_get() {
 # - netmask (as bit count)
 # - gateway (IPv4 address)
 # - nameservers (comma seperated list of IPv4 addresses)
+# - activate_wanif (yes|no)
 #
 staticifinfo_get() {
     local reply=''
@@ -307,6 +309,21 @@ staticifinfo_get() {
             [Yy]*) nameservers="$nameservers," ;;
             *) break ;;
         esac
+    done
+    echo
+
+    activate_wanif=""
+    while : ; do
+        read -p "Activate the WAN interface before configuring? [yes] " activate_wanif
+        case $netmask in
+            "") activate_wanif='yes' ;;
+            y*|Y*) activate_wanif='yes' ;;
+            n*|N*) activate_wanif='no' ;;
+            *) echo 'The answer is yes or no' ; echo ; activate_wanif='' ;;
+        esac
+        if [ -n "$activate_wanif" ] ; then
+            break
+        fi
     done
     echo
 }
@@ -368,6 +385,7 @@ vpn_gateway_dns_option_get() {
         echo "$dns: invalid selection."
         read -p "DNS server [1]: " dns
     done
+    [[ -z "$dns" ]] && dns=1
 }
 
 #
@@ -539,6 +557,15 @@ GATEWAY=$gateway
 NAMESERVERS=$nameservers
 
 #
+# ACTIVATE_WANIF
+# Activate the WAN interface prior to proceeding with
+# configuration. This is required if the WAN is required
+# to connect to the internet. (If using port 2 to connect
+# this option should be set to no.)
+
+ACTIVATE_WANIF=$activate_wanif
+
+#
 # PUBLIC_ADDRESS
 # The public IP address can be automatically determined if the server
 # is connected to the network and the Internet is accessible. Otherwise
@@ -593,7 +620,7 @@ __EOF
 
 load_config() {
     local cfgfile=$1
-    if [ -f "$dfgfile" ] ; then
+    if [ -f "$cfgfile" ] ; then
         . "$cfgfile"
         wanif=$WANIF
         lanifs=$LANIFS
@@ -602,6 +629,7 @@ load_config() {
         netmask=$NETMASK
         gateway=$GATEWAY
         nameservers=$NAMESERVERS
+        activate_wanif=$ACTIVATE_WANIF
         public_address=$PUBLIC_ADDRESS
         protocol=$PROTOCOL
         port=$PORT
@@ -691,15 +719,17 @@ create_wanif() {
     if [ -f ${NETPLANDIR}/01-network-manager-all.yaml ] ; then
         rm ${NETPLANDIR}/01-network-manager-all.yaml
     fi
-    if [ $proto == 'dhcp' ; then
+    if [ $proto == 'dhcp' ] ; then
         cat < ${TOOLDIR}/templates/server/netplan/00-wan-config.tmpl | wanif="$wanif" envsubst > ${NETPLANDIR}/00-wan-config.yaml
     else
         cat < ${TOOLDIR}/templates/server/netplan/00-wan-static-config.tmpl | wanif="$wanif" address=$address netmask=$netmask gateway=$gateway nameservers=$nameservers envsubst > ${NETPLANDIR}/00-wan-static-config.yaml
     fi
-    echo "Activating WAN Interface before proceeding with configuration"
-    netplan generate
-    netplan apply
-    while [ -z "$(ip -4 addr show $wanif | awk '/inet/{print $2}')" ] ; do : ; done
+    if [ $activate_wanif == 'yes' ] ; then
+        echo "Activating WAN Interface before proceeding with configuration"
+        netplan generate
+        netplan apply
+        while [ -z "$(ip -4 addr show $wanif | awk '/inet/{print $2}')" ] ; do : ; done
+    fi
 }
 
 create_dmc_lanbr() {

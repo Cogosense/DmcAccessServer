@@ -38,6 +38,15 @@ GATEWAY=
 NAMESERVERS=
 
 #
+# ACTIVATE_WANIF
+# Activate the WAN interface prior to proceeding with
+# configuration. This is required if the WAN is required
+# to connect to the internet. (If using port 2 to connect
+# this option should be set to no.)
+
+ACTIVATE_WANIF=$activate_wanif
+
+#
 # PUBLIC_ADDRESS
 # The public IP address can be automatically determined if the server
 # is connected to the network and the Internet is accessible. Otherwise
