@@ -102,7 +102,7 @@ else
 fi
 
 systemctl daemon-reload
-service restart openvpn
+systenctl restart openvpn
 netplan generate
 netplan apply
 
