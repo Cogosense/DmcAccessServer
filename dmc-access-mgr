@@ -742,10 +742,8 @@ create_dmc_lanbr() {
         done
         cat < ${TOOLDIR}/templates/server/netplan/30-bridge-config.tmpl | ethernets="$ethernets" interfaces="$interfaces" envsubst > ${NETPLANDIR}/30-bridge-config.yaml
     )
-    if [ $activate_wanif == 'yes' ] ; then
-        netplan generate
-        netplan apply
-    fi
+    netplan generate
+    netplan apply
 }
 
 add_tunnel_to_lanbr() {
@@ -799,10 +797,8 @@ create_tunnel() {
         local tunnel=`get_next_gretap_device`
         cat < ${TOOLDIR}/templates/server/netplan/20-tunnel-remotegw-n.tmpl | tunnel="$tunnel" clientip="$clientip" serverip="$serverip" envsubst > ${NETPLANDIR}/20-tunnel-${name}.yaml
         add_tunnel_to_lanbr $tunnel
-        if [ $activate_wanif == 'yes' ] ; then
-            netplan generate
-            netplan apply
-        fi
+        netplan generate
+        netplan apply
     fi
 }
 
@@ -930,7 +926,6 @@ setup_server_snmpd () {
 }
 
 new_client () {
-    activate_wanif='yes'
     local serverip=$(get_server_ip)
     local clientip=$(get_client_ip)
     local netmask=$(ipcalc -nb ${VPNNET} | awk '/Netmask:/{print $2}')
