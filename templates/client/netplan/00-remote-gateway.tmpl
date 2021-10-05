@@ -7,7 +7,9 @@ network:
       dhcp4: yes
       dhcp6: no
     enp2s0:
-      dhcp4: no
+      dhcp4: yes
+      dhcp4-overrides:
+        use-routes: false
       dhcp6: no
     enp3s0:
       dhcp4: no
