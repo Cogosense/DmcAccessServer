@@ -13,7 +13,7 @@ Usage $0 [OPTIONS]
 
  -d    uninstall the existing installation first and exit. Run again to install.
  -f    force the installation when the machine cannot be identified as
-       a gateway.
+       a gateway or a missing software package or missing server process is detected.
 
 _EOF
 }
@@ -69,15 +69,9 @@ read -n1 -r -p "Press any key to continue..."
 
 if [ $opt_d == 'yes' ] ; then
     echo "Uninstalling gateway"
-    cat << __EOF > /etc/netplan/01-network-manager-all.yaml
-# Let NetworkManager manage all devices on this system
-network:
-  version: 2
-  renderer: NetworkManager
-__EOF
     for yaml in /etc/netplan/*.yaml ; do
         case $yaml in
-            01*) ;;
+            00*) ;;
             *) rm $yaml ;;
         esac
     done
@@ -91,13 +85,60 @@ __EOF
     done
     ip link del lanbr0
     ip link del gretap1
-    apt remove -y snmpd snmp libsnmp-dev
+    systemctl stop snmpd
+    if [ -f /etc/snmp/snmpd.conf.bak ] ; then
+        mv /etc/snmp/snmpd.conf.bak /etc/snmp/snmpd.conf
+    fi
+    systemctl start snmpd
 else
     sed '0,/^__EOF__$/d' $0 | tar xz -C /
     if [ -f /etc/netplan/01-network-manager-all.yaml ] ; then
         rm /etc/netplan/01-network-manager-all.yaml
     fi
-    apt install -y openssh-server snmpd snmp libsnmp-dev
+
+    if [ ! -e '/usr/sbin/sshd' ] ; then
+        >&2 echo "warning: ssh server is not installed: trying to install now"
+        apt -y install openssh-server
+        if [ ! -e '/usr/sbin/sshd' ] ; then
+            >&2 echo "error: unable to install ssh server please resolve before proceeding"
+            >&2 echo "    sudo apt install openssh-server"
+            [ $opt_f == 'yes' ] || exit 1
+        fi
+    fi
+    ssh=$(systemctl is-active ssh)
+    if [ "$ssh" != 'active' ] ; then
+        >&2 echo "warning: ssh server is not running: trying to activate it "
+        systemctl enable ssh
+        systemctl start ssh
+        ssh=$(systemctl is-active ssh)
+        if [ "$ssh" != 'active' ] ; then
+            >&2 echo "error: unable to start ssh server please resolve before proceeding"
+            >&2 echo "    sudo systemctl start ssh"
+            [ $opt_f == 'yes' ] || exit 1
+        fi
+    fi
+    if [ ! -e '/usr/sbin/snmpd' -o ! -e '/usr/bin/net-snmp-create-v3-user' ] ; then
+        >&2 echo "warning: SNMP is not installed: trying to install now"
+        apt install snmpd snmp libsnmp-dev
+        if [ ! -e '/usr/sbin/snmpd' -o ! -e '/usr/bin/net-snmp-create-v3-user' ] ; then
+            >&2 echo "error: unable to install SNMP server and tools please resolve before proceeding"
+            >&2 echo "    sudo apt install snmpd snmp libsnmp-dev"
+            [ $opt_f == 'yes' ] || exit 1
+        fi
+    fi
+    snmpd=$(systemctl is-active snmpd)
+    if [ "$snmpd" != 'active' ] ; then
+        >&2 echo "warning: SNMP server is not running: trying to activate it "
+        systemctl enable snmpd
+        systemctl start snmpd
+        snmpd=$(systemctl is-active snmpd)
+        if [ "$snmpd" != 'active' ] ; then
+            >&2 echo "error: snmpd server is not installed: try: "
+            >&2 echo "    sudo systemctl enable snmpd"
+            >&2 echo "    sudo systemctl start snmpd"
+            [ $opt_f == 'yes' ] || exit 1
+        fi
+    fi
     systemctl stop snmpd
     sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Gateway/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
     net-snmp-create-v3-user -ro -A "${SNMP_PASSWORD}" -a MD5 -X "${SNMP_PASSWORD}" -x DES "${SNMP_USER}"

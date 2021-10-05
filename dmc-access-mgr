@@ -62,9 +62,11 @@ OPTIONS:
  -h               This help screen (does not require sudo)
  -C  [CFGFILE]    Create a new configuration file and exits
  -c  [CFGFILE]    Apply a previously created configuration file
+ -D               Download all the software required now. This allows the server
+                  to be configured later when no Internet access is available.
+ -r  [TARFILE]    Restore DMC access server config from the TARFILE.
  -s  [IP|TARFILE] Save server config directly to IP address, or save to TARFILE
                   for manual transfer to standby system.
- -r  [TARFILE]    Restore DMC access server config from the TARFILE.
  -x               Turn on bash shell tracing.
 
 _EOF
@@ -451,6 +453,38 @@ create_config() {
     done
     echo
 
+    local mgmtif=""
+    while : ; do
+        read -p "Which interface will be reserved for management? (enter 'none' for no management interface) " mgmtif
+        case $mgmtif in
+            "")
+                read -p "The management interface should be determined at installation time? [yn] " reply
+                case $reply in
+                    [Yy]*) break ;;
+                    *) ;;
+                esac
+                ;;
+            none)
+                read -p "There will be no management interface? [yn] " reply
+                case $reply in
+                    [Yy]*) ;;
+                    *) mgmtif="" ;;
+                esac
+                ;;
+            *)
+                read -p "The management interface will be named $mgmtif? [yn] " reply
+                case $reply in
+                    [Yy]*) ;;
+                    *) mgmtif="" ;;
+                esac
+                ;;
+        esac
+        if [ -n "$mgmtif" ] ; then
+            break
+        fi
+    done
+    echo
+
     local lanifs=""
     while : ; do
         read -p "Which interface(s) are connected to the DMC(s)? (comma seperate multiple interface names, no spaces) " lanifs
@@ -484,6 +518,10 @@ create_config() {
     echo
 
     if [ $proto == 'static' ] ;then
+        if [ "$mgmtif" == 'none' ] ; then
+            >&2 echo "error: a management interface has to be defined when using a static WAN configuration"
+            exit 1
+        fi
         staticifinfo_get
     fi
 
@@ -525,6 +563,18 @@ create_config() {
 
 WANIF=$wanif
 
+# MGMTIF
+# the interface name of the management interface
+# The management interface runs DHCPv4, but ignores
+# any routing info provided by DHCP. Plugging a
+# management machine running a DHCP server will
+# allow this intercae to come up and SSH access
+# is allowed.
+#
+# Set to 'none' to disable this feature
+
+MGMTIF=$mgmtif
+
 # LANIFS
 # a list of comma delimited interface names on the LAN side
 # All these interfaces will be joined into a bridge and can
@@ -559,9 +609,9 @@ NAMESERVERS=$nameservers
 #
 # ACTIVATE_WANIF
 # Activate the WAN interface prior to proceeding with
-# configuration. This is required if the WAN is required
-# to connect to the internet. (If using port 2 to connect
-# this option should be set to no.)
+# configuration. If the WAN is using a static configuration
+# and the machine is not coonnected to its final production
+# network, set this option to 'no'
 
 ACTIVATE_WANIF=$activate_wanif
 
@@ -623,6 +673,7 @@ load_config() {
     if [ -f "$cfgfile" ] ; then
         . "$cfgfile"
         wanif=$WANIF
+        mgmtif=$MGMTIF
         lanifs=$LANIFS
         proto=$PROTO
         address=$ADDRESS
@@ -674,10 +725,31 @@ select_wanif()
     done
 }
 
+select_mgmtif()
+{
+    interfaces=($(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}') 'none')
+    interfaces=($(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif"))
+    while : ; do
+        local cnt=1
+        for intf in "${interfaces[@]}"; do
+            echo "$cnt) $intf"
+            let cnt++
+        done
+        read -p "Which interface is to be used for a management interface [none]: " reply
+        case $reply in
+            "") mgmtif='';;
+            *) mgmtif="${interfaces[((reply-1))]}" ;;
+        esac
+        if [ -n "$mgmtif" ] ; then
+            break
+        fi
+    done
+}
+
 select_lanifs()
 {
     echo "Which interface(s) are connected to the DMC?"
-    interfaces=($(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif"))
+    interfaces=($(ip link show | awk '/^[0-9]*: en/{print substr($2, 1, length($2)-1)}' | grep -v lo | grep -v "$wanif" | grep -v "$mgmtif"))
     local selected_interfaces=""
     while : ; do
         local cnt=1
@@ -715,19 +787,29 @@ select_lanifs()
 
 create_wanif() {
     local wanif=$1
+    local mgmtif=$2
     shift
     if [ -f ${NETPLANDIR}/01-network-manager-all.yaml ] ; then
         rm ${NETPLANDIR}/01-network-manager-all.yaml
     fi
+    echo "Activating WAN Interface"
     if [ $proto == 'dhcp' ] ; then
         cat < ${TOOLDIR}/templates/server/netplan/00-wan-config.tmpl | wanif="$wanif" envsubst > ${NETPLANDIR}/00-wan-config.yaml
+        if [ $mgmtif != 'none' ] ; then
+            cat < ${TOOLDIR}/templates/server/netplan/management-config.tmpl | mgmtif="$mgmtif" envsubst >> ${NETPLANDIR}/00-wan-config.yaml
+        fi
     else
+        if [ $mgmtif == 'none' ] ; then
+            >&2 echo "error: refusing to apply static WAN config without a management port defined"
+            exit 2
+        fi
+        echo "warning: connectivity may be lost and the cable may have to be switched to the $mgmtif port before proceeding with configuration"
         cat < ${TOOLDIR}/templates/server/netplan/00-wan-static-config.tmpl | wanif="$wanif" address=$address netmask=$netmask gateway=$gateway nameservers=$nameservers envsubst > ${NETPLANDIR}/00-wan-static-config.yaml
+        cat < ${TOOLDIR}/templates/server/netplan/management-config.tmpl | mgmtif="$mgmtif" envsubst >> ${NETPLANDIR}/00-wan-static-config.yaml
     fi
+    netplan generate
+    netplan apply
     if [ $activate_wanif == 'yes' ] ; then
-        echo "Activating WAN Interface before proceeding with configuration"
-        netplan generate
-        netplan apply
         while [ -z "$(ip -4 addr show $wanif | awk '/inet/{print $2}')" ] ; do : ; done
     fi
 }
@@ -918,11 +1000,80 @@ setup_server_snmpd () {
     local password="$2"
     shift 2
 
-    apt install -y openssh-server snmpd snmp libsnmp-dev
     systemctl stop snmpd
     sed -i.bak 's/^sysLocation.*$/sysLocation Dali Management VPN Concentrator/;s/^sysContact.*$/sysContact Dali <support@daliwireless.com>/;s/^agentaddress.*$/agentaddress udp:161,udp6:[::1]:161/' /etc/snmp/snmpd.conf
     net-snmp-create-v3-user -ro -A "$password" -a MD5 -X "$password" -x DES "$user"
     systemctl start snmpd
+}
+
+#
+# Prepares system for confiuration, downloads
+# needed packages and configures the management
+# interface. The WAN interface is left as a DHCP
+# controlled interface.
+#
+# In this state configuration can continue without
+# need for an internet connection.
+#
+stage_server() {
+    if [ -e ${STATEDIR}/.staging-done ] [ then
+        # Install a firewall in the rare case where one is not already available
+        if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
+            if [[ "$os" == "centos" || "$os" == "fedora" ]]; then
+                firewall="firewalld"
+                # We do not want to silently enable firewalld, so we give a subtle warning
+                # If the user continues, firewalld will be installed and enabled during setup
+                echo "firewalld, which is required to manage routing tables, will also be installed."
+            elif [[ "$os" == "debian" || "$os" == "ubuntu" ]]; then
+                # iptables is way less invasive than firewalld so no warning is given
+                firewall="iptables"
+            fi
+        fi
+        # If running inside a container, disable LimitNPROC to prevent conflicts
+        if systemd-detect-virt -cq; then
+            mkdir /etc/systemd/system/openvpn-server@server.service.d/ 2>/dev/null
+            echo "[Service]
+    LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
+        fi
+        if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
+            apt-get update
+            apt-get install -y curl ipcalc openvpn openssl ca-certificates snmpd snmp libsnmp-dev $firewall
+            snap install yq
+        elif [[ "$os" = "centos" ]]; then
+            yum install -y epel-release
+            yum install -y openvpn openssl ca-certificates tar $firewall
+            #
+            # These are only needed if a non default port is selected and SELinux
+            # is enabled on CentOS, but in the case configuration is deferred to a
+            # time when no internet is available, install them now.
+            #
+            if ! hash semanage 2>/dev/null; then
+                if [[ "$os_version" -eq 7 ]]; then
+                    # Centos 7
+                    yum install -y policycoreutils-python
+                else
+                    # CentOS 8 or Fedora
+                    dnf install -y policycoreutils-python-utils
+                fi
+            fi
+        else
+            # Else, OS must be Fedora
+            dnf install -y openvpn openssl ca-certificates tar $firewall
+        fi
+        # If firewalld was just installed, enable it
+        if [[ "$firewall" == "firewalld" ]]; then
+            systemctl enable --now firewalld.service
+        fi
+
+        if [ -d ${SERVERDIR}/easy-rsa/ ] ; then
+            # Get easy-rsa
+            easy_rsa_url='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.8/EasyRSA-3.0.8.tgz'
+            mkdir -p ${SERVERDIR}/easy-rsa/
+            { wget -qO- "$easy_rsa_url" 2>/dev/null || curl -sL "$easy_rsa_url" ; } | tar xz -C ${SERVERDIR}/easy-rsa/ --strip-components 1
+            chown -R root:root ${SERVERDIR}/easy-rsa/
+        fi
+        touch ${STATEDIR}/.staging-done
+    fi
 }
 
 new_client () {
@@ -994,11 +1145,12 @@ new_client () {
 # MAIN starts here
 # Process options
 
-while getopts hC:c:r:s:x c ; do
+while getopts hC:c:Dr:s:x c ; do
     case $c in
         h) usage ; exit 0 ;;
         C) create_config "$OPTARG" ; exit 0 ;;
         c) load_config "$OPTARG" ;;
+        D) stage_server ; exit 0 ;;
         r) opt_r="$OPTARG" ; isroot ; restore_server_config $opt_r ; exit $? ;;
         s) opt_s="$OPTARG" ; isroot ; save_server_config $opt_s ; exit $? ;;
         x) set -x ;;
@@ -1012,16 +1164,19 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     clear
     echo 'Welcome to this Dali DMC Access Server installer!'
     echo "The network interfaces will be reconfigured first to use netplan and networkd"
-    if [ -z "$wanif" -o -z "$lanifs" ] ; then
+    if [ -z "$wanif" -o -z "$mgmtif" -o -z "$lanifs" ] ; then
         if detect_qotom ; then
             echo "This appears to be a Qotom network applicance"
             echo "    interface 1 should be connected to the Internet/Modem"
+            echo "    interface 2 is available for connection to a management machine"
             echo "    interfaces 3 and 4 should be connected to the DMC"
             wanif='enp1s0'
+            mgmtif="enp2s0"
             lanifs="enp3s0 enp4s0"
         else
-            select_wanif
-            select_lanifs
+            [ -z "$wanif" ] && select_wanif
+            [ -z "$mgmtif" ] && select_mgmtif
+            [ -z "$lanifs" ] && select_lanifs
         fi
     fi
     if [ -z "$proto" ] ; then
@@ -1034,7 +1189,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     fi
     echo "Using WAN interface $wanif"
     echo "Using DMC interface(s) $lanifs"
-    create_wanif $wanif
+    create_wanif $wanif $mgmtif
     if [ -z "$address" ] ; then
         # If system has a single IPv4, it is selected automatically. Else, ask the user
         if [[ $(ip -4 addr | grep inet | grep -vEc '127(\.[0-9]{1,3}){3}') -eq 1 ]]; then
@@ -1108,48 +1263,11 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     echo "DMC Access Server installation is ready to begin."
     read -n1 -r -p "Press any key to continue..."
     create_dmc_lanbr $lanifs
-    # Install a firewall in the rare case where one is not already available
-    if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
-        if [[ "$os" == "centos" || "$os" == "fedora" ]]; then
-            firewall="firewalld"
-            # We do not want to silently enable firewalld, so we give a subtle warning
-            # If the user continues, firewalld will be installed and enabled during setup
-            echo "firewalld, which is required to manage routing tables, will also be installed."
-        elif [[ "$os" == "debian" || "$os" == "ubuntu" ]]; then
-            # iptables is way less invasive than firewalld so no warning is given
-            firewall="iptables"
-        fi
-    fi
-    # If running inside a container, disable LimitNPROC to prevent conflicts
-    if systemd-detect-virt -cq; then
-        mkdir /etc/systemd/system/openvpn-server@server.service.d/ 2>/dev/null
-        echo "[Service]
-LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
-    fi
-    if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
-        apt-get update
-        apt-get install -y curl ipcalc openvpn openssl ca-certificates $firewall
-        snap install yq
-    elif [[ "$os" = "centos" ]]; then
-        yum install -y epel-release
-        yum install -y openvpn openssl ca-certificates tar $firewall
-    else
-        # Else, OS must be Fedora
-        dnf install -y openvpn openssl ca-certificates tar $firewall
-    fi
-    # If firewalld was just installed, enable it
-    if [[ "$firewall" == "firewalld" ]]; then
-        systemctl enable --now firewalld.service
-    fi
+
+    stage_server
 
     VPNSERVER=$(ipcalc -nb ${VPNNET} | awk '/^Address:/{printf "%s ", $2}; /^Netmask:/{print $2}')
 
-    # Get easy-rsa
-    easy_rsa_url='https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.8/EasyRSA-3.0.8.tgz'
-    mkdir -p ${SERVERDIR}/easy-rsa/
-    { wget -qO- "$easy_rsa_url" 2>/dev/null || curl -sL "$easy_rsa_url" ; } | tar xz -C ${SERVERDIR}/easy-rsa/ --strip-components 1
-    chown -R root:root ${SERVERDIR}/easy-rsa/
-    cd ${SERVERDIR}/easy-rsa/
     # Create the PKI, set up the CA and the server and client certificates
     ./easyrsa init-pki
     ./easyrsa --batch build-ca nopass
@@ -1310,16 +1428,9 @@ WantedBy=multi-user.target" >> /etc/systemd/system/openvpn-iptables.service
     fi
     # If SELinux is enabled and a custom port was selected, we need this
     if sestatus 2>/dev/null | grep "Current mode" | grep -q "enforcing" && [[ "$port" != 1194 ]]; then
-        # Install semanage if not already present
-        if ! hash semanage 2>/dev/null; then
-            if [[ "$os_version" -eq 7 ]]; then
-                # Centos 7
-                yum install -y policycoreutils-python
-            else
-                # CentOS 8 or Fedora
-                dnf install -y policycoreutils-python-utils
-            fi
-        fi
+        #
+        # semanage is installed in the server_stage() function if required
+        #
         semanage port -a -t openvpn_port_t -p "$protocol" "$port"
     fi
     # If the server is behind NAT, use the correct IP address
@@ -1464,12 +1575,14 @@ else
                 rm -f /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
                 rm -f /etc/sysctl.d/30-openvpn-forward.conf
                 restore_networking_default
-                if [[ "$os" = "debian" || "$os" = "ubuntu" ]]; then
-                    apt-get remove --purge -y openvpn
-                else
-                    # Else, OS must be CentOS or Fedora
-                    yum remove -y openvpn
-                fi
+                rm -rf /etc/openvpn/server/*
+                rm -rf /etc/openvpn/gateway/*
+                rm -rf /etc/openvpn/ccd/*
+                rm -rf ${STATEDIR}
+                #
+                # Do not remove the software package. If this is a staged machine
+                # it may be difficult to reinstall it. Just stop it and remove configuration
+                #
                 echo
                 echo "DMC Access Server removed!"
             else

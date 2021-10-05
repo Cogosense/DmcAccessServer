@@ -6,6 +6,18 @@
 
 WANIF=
 
+# MGMTIF
+# the interface name of the management interface
+# The management interface runs DHCPv4, but ignores
+# any routing info provided by DHCP. Plugging a
+# management machine running a DHCP server will
+# allow this intercae to come up and SSH access
+# is allowed.
+#
+# Set to 'none' to disable this feature
+
+MGMTIF=
+
 # LANIFS
 # a list of comma delimited interface names on the LAN side
 # All these interfaces will be joined into a bridge and can
@@ -40,11 +52,11 @@ NAMESERVERS=
 #
 # ACTIVATE_WANIF
 # Activate the WAN interface prior to proceeding with
-# configuration. This is required if the WAN is required
-# to connect to the internet. (If using port 2 to connect
-# this option should be set to no.)
+# configuration. If the WAN is using a static configuration
+# and the machine is not coonnected to its final production
+# network, set this option to 'no'
 
-ACTIVATE_WANIF=$activate_wanif
+ACTIVATE_WANIF=
 
 #
 # PUBLIC_ADDRESS

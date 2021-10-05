@@ -9,7 +9,7 @@ flash storage. The power consumption is 10W.
 The interfaces are assigned as follows:
 
 * NIC 1 - WAN interface connection to the modem or internet
-* NIC 2 - Unused
+* NIC 2 - Management Port
 * NIC 3 - LAN interface bridged with NIC 4 connected to hdHost or to DMC
 * NIC 4 - LAN interface bridged with NIC 3 connected to hdHost or to DMC
 
@@ -39,7 +39,7 @@ Reboot and login, start a terminal and do a software update:
 
     sudo apt update
     sudo apt -y upgrade -y
-    sudo apt install -y git openssh-server
+    sudo apt install -y git openssh-server snmpd snmp libsnmp-dev
 
 ## Initial Installation of the DMC Access Server
 
@@ -157,6 +157,17 @@ the network configuration will not be correct afterwards.
 2. If the installer detects that the gateway is already installed, it will not attempt
 to install. The -d option can be use to perform an uninstalltion of the gateway. After
 the gateway is uninstalled, the installation should succeed.
+
+## Use of a Management Port
+
+A management port is optional when the WAN port is set to use DHCP. When the WAN port
+uses a static configuration, the management port is mandatory. This ensures there is
+always the ability to connect to the VPN server unit.
+
+Connection via a management port is achieved with a laptop running the Windows
+[TFTPD](https://pjo2.github.io/tftpd64/) daemon to provide an IP address via DHCP.
+Open TFTPD, direct connect a CAT6 cable between laptop and Qotom management port,
+then use Putty to SSH into the IP address assigned.
 
 ## Creating a Standby Access Server
 
