@@ -13,6 +13,21 @@ The interfaces are assigned as follows:
 * NIC 3 - LAN interface bridged with NIC 4 connected to hdHost or to DMC
 * NIC 4 - LAN interface bridged with NIC 3 connected to hdHost or to DMC
 
+To do initial install connect a USB keyboard, USB mouse and a VGA monitor.
+
+## BIOS Changes
+
+Boot the Qotom into the BIOS by pressing the DEL key while the AMI BIOS banner
+is displayed.
+
+In the BIOS navigate to Advanced->ACPI Settings. Set the folling values:
+
+Restore AC Power Loss = Last State
+Enable Hibernation = Disabled
+ACPI Sleep State = Suspend Disabled
+
+Save and exit BIOS.
+
 ## OS Install on Qotom
 
 This applies to both server and gateway machines.

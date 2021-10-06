@@ -1016,7 +1016,7 @@ setup_server_snmpd () {
 # need for an internet connection.
 #
 stage_server() {
-    if [ -e ${STATEDIR}/.staging-done ] [ then
+    if [ -e ${STATEDIR}/.staging-done ] ; then
         # Install a firewall in the rare case where one is not already available
         if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
             if [[ "$os" == "centos" || "$os" == "fedora" ]]; then
