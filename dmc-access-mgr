@@ -1150,7 +1150,7 @@ while getopts hC:c:Dr:s:x c ; do
         h) usage ; exit 0 ;;
         C) create_config "$OPTARG" ; exit 0 ;;
         c) load_config "$OPTARG" ;;
-        D) stage_server ; exit 0 ;;
+        D) isroot ; stage_server ; exit 0 ;;
         r) opt_r="$OPTARG" ; isroot ; restore_server_config $opt_r ; exit $? ;;
         s) opt_s="$OPTARG" ; isroot ; save_server_config $opt_s ; exit $? ;;
         x) set -x ;;
