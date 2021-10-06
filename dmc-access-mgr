@@ -1040,7 +1040,7 @@ stage_server() {
         fi
         # If running inside a container, disable LimitNPROC to prevent conflicts
         if systemd-detect-virt -cq; then
-            mkdir /etc/systemd/system/openvpn-server@server.service.d/ 2>/dev/null
+            mkdir -p /etc/systemd/system/openvpn-server@server.service.d/
             echo "[Service]
     LimitNPROC=infinity" > /etc/systemd/system/openvpn-server@server.service.d/disable-limitnproc.conf
         fi
@@ -1094,7 +1094,7 @@ new_client () {
     create_tunnel $client $clientip $serverip
     mkdir -p ${GWYSTATEDIR}/$client/etc
     # Generate netplan config for gateway
-    mkdir ${GWYSTATEDIR}/$client/etc/netplan
+    mkdir -p ${GWYSTATEDIR}/$client/etc/netplan
     for template in ${TOOLDIR}/templates/client/netplan/*.tmpl ; do
         if [ -e $template ] ; then
             config=$(basename -s .tmpl $template).yaml
@@ -1124,7 +1124,7 @@ new_client () {
     } > ${CLIENTDIR}/"$client".ovpn
     echo "ifconfig-push ${clientip} ${netmask}" > ${CCDDIR}/"$client"
 
-    mkdir ${GWYSTATEDIR}/$client/etc/openvpn
+    mkdir -p ${GWYSTATEDIR}/$client/etc/openvpn
     cp ${CLIENTDIR}/"$client".ovpn ${GWYSTATEDIR}/$client/etc/openvpn/"$client".conf
     (
         echo '#!/bin/bash'
