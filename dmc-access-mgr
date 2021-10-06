@@ -807,6 +807,14 @@ create_wanif() {
         cat < ${TOOLDIR}/templates/server/netplan/00-wan-static-config.tmpl | wanif="$wanif" address=$address netmask=$netmask gateway=$gateway nameservers=$nameservers envsubst > ${NETPLANDIR}/00-wan-static-config.yaml
         cat < ${TOOLDIR}/templates/server/netplan/management-config.tmpl | mgmtif="$mgmtif" envsubst >> ${NETPLANDIR}/00-wan-static-config.yaml
     fi
+    #
+    # Don't wait for interface activation if it is unplugged
+    #
+    state=$(ip link show $wanif | awk "/$wanif/{print $9}")
+    if [ "$state" != 'UP' ] ; then
+        activate_wanif='no'
+    fi
+
     netplan generate
     netplan apply
     if [ $activate_wanif == 'yes' ] ; then
@@ -1168,7 +1176,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     echo "The network interfaces will be reconfigured first to use netplan and networkd"
     if [ -z "$wanif" -o -z "$mgmtif" -o -z "$lanifs" ] ; then
         if detect_qotom ; then
-            echo "This appears to be a Qotom network applicance"
+            echo "This appears to be a Qotom network appliance"
             echo "    interface 1 should be connected to the Internet/Modem"
             echo "    interface 2 is available for connection to a management machine"
             echo "    interfaces 3 and 4 should be connected to the DMC"
