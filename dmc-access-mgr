@@ -1017,6 +1017,7 @@ setup_server_snmpd () {
 #
 stage_server() {
     if [ ! -e ${STATEDIR}/.staging-done ] ; then
+        set -e
         # Install a firewall in the rare case where one is not already available
         if ! systemctl is-active --quiet firewalld.service && ! hash iptables 2>/dev/null; then
             if [[ "$os" == "centos" || "$os" == "fedora" ]]; then
@@ -1072,6 +1073,7 @@ stage_server() {
             { wget -qO- "$easy_rsa_url" 2>/dev/null || curl -sL "$easy_rsa_url" ; } | tar xz -C ${SERVERDIR}/easy-rsa/ --strip-components 1
             chown -R root:root ${SERVERDIR}/easy-rsa/
         fi
+        set +e
         touch ${STATEDIR}/.staging-done
     fi
 }
