@@ -194,9 +194,10 @@ ipv4address_get() {
                 done
 
                 if [ -n "$address" ] ; then
-                    read -p "The provided internet address is $address ? [yn] " reply
+                    read -p "The provided internet address is [$address] ? [Yn] " reply
                     case $reply in
                         [Yy]*) ;;
+                        '') ;;
                         *) address='' ;;
                     esac
                 fi
@@ -215,34 +216,132 @@ ipv4address_get() {
 # The following variable is set on return:
 # - proto
 #
-wanifproto_get() {
-    proto=""
+ifproto_get() {
+    declare -n _proto="$1"
+    _proto=""
     while : ; do
-        read -p "Will the WAN interface be manually or automatically configured? (static|dhcp) " proto
-        case $proto in
-            "") read -p "The WAN interface configuration method will be determined at installation time? [yn] " reply
-                case $reply in
-                    [Yy]*) break ;;
-                    *) ;;
-                esac
-                ;;
-            static) read -p "The WAN interface configuration will be manual? [yn] " reply
+        read -p "Will the WAN interface be manually or automatically configured? (static|dhcp) " _proto
+        case $_proto in
+            "") ;;
+            static) read -p "The WAN interface configuration will be manual? [Yn] " reply
                 case $reply in
                     [Yy]*) ;;
-                    *) proto="" ;;
+                    '') ;;
+                    *) _proto="" ;;
                 esac
                 ;;
-            dhcp) read -p "The WAN interface configuration will be automatic? [yn] " reply
+            dhcp) read -p "The WAN interface configuration will be automatic? [Yn] " reply
                 case $reply in
                     [Yy]*) ;;
-                    *) proto="" ;;
+                    '') ;;
+                    *) _proto="" ;;
                 esac
                 ;;
         esac
-        if [ -n "$proto" ] ; then
+        if [ -n "$_proto" ] ; then
             break
         fi
     done
+}
+
+#
+# @param $1 - a bash array
+# This method sets the following keys
+# on return.
+# - address (IPv4 address)
+# - netmask (as bit count)
+# - gateway (IPv4 address)
+# - nameservers (comma seperated list of IPv4 addresses)
+#
+ifinfo_get() {
+    declare -n ifinfo="$1"
+    local reply=''
+    local address=""
+    while : ; do
+        address=$(ipv4address_get "What is the IPv4 address of the WAN interface?")
+        if [ -n "$address" ] ; then
+            break
+        else
+            echo "The WAN interface address must be provided when using manual interface configuration"
+        fi
+    done
+    echo
+
+    local netmask=""
+    while : ; do
+        read -p "Enter the number of bits in the netmask? [8-30] " netmask
+        case $netmask in
+            "") echo "The WAN interface netmask must be provided when using manual interface configuration" ; echo ; netmask='' ;;
+            8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30) read -p "The WAN interface netmask is [$netmask] bits? [Yn] " reply
+                case $reply in
+                    [Yy]*) ;;
+                    '') ;;
+                    *) netmask='' ;;
+                esac
+                ;;
+            *) echo 'The number of bits is invalid, provide a number between 8 and 30 inclusive' ; echo ; netmask='' ;;
+        esac
+        if [ -n "$netmask" ] ; then
+            break
+        fi
+    done
+    echo
+
+    local gateway=""
+    while : ; do
+        gateway=$(ipv4address_get "What is the IPv4 address of the WAN gateway?")
+        if [ -n "$gateway" ] ; then
+            break
+        else
+            echo "The WAN gateway address must be provided when using manual interface configuration"
+        fi
+    done
+    echo
+
+    local nameservers=""
+    local nameserver=''
+    while : ; do
+        nameserver=$(ipv4address_get "What is the IPv4 address of the WAN name server?")
+        local prompt=''
+        local yAction=''
+        local nAction=''
+        local defaultAction=''
+        if [ -z "$nameserver" -a -z "$nameservers" ] ; then
+            prompt='No nameservers will be provisioned on this interface? [Yn] '
+            yAction='break'
+            nAction=''
+            defaultAction='break'
+        elif [ -n "$nameserver" -a -z "$nameservers" ] ; then
+            nameservers="$nameserver"
+            prompt="Add another nameserver [$nameservers] ? [yN] "
+            yAction=''
+            nAction='breck'
+            defaultAction='break'
+        elif [ -n "$nameserver" -a -n "$nameservers" ] ; then
+            nameservers="$nameservers,$nameserver"
+            prompt="Add another nameserver [$nameservers] ? [yN] "
+            yAction=''
+            nAction='breck'
+            defaultAction='break'
+        else
+            prompt="Add another nameserver [$nameservers] ? [yN] "
+            yAction=''
+            nAction='breck'
+            defaultAction='break'
+        fi
+        read -p "$prompt" reply
+        case $reply in
+            [Yy]*) [ "$yAction" == 'break' ] && break ;;
+            '') [ "$defaultAction" == 'break' ] && break ;;
+            *) [ "$nAction" == 'break' ] && break ;;
+        esac
+    done
+    echo
+
+    ifinfo['address']=$address
+    ifinfo['netmask']=$netmask
+    ifinfo['gateway']=$gateway
+    ifinfo['nameservers']="$nameservers"
 }
 
 #
@@ -255,69 +354,19 @@ wanifproto_get() {
 # - activate_wanif (yes|no)
 #
 staticifinfo_get() {
+    declare -A params
+    ifinfo_get params
+
+    address=${params['address']}
+    netmask=${params['netmask']}
+    gateway=${params['gateway']}
+    nameservers=${params['nameservers']}
+
     local reply=''
-    address=""
-    while : ; do
-        address=$(ipv4address_get "What is the IPv4 address of the WAN interface?")
-        if [ -n "$address" ] ; then
-            break
-        else
-            echo "The WAN interface address must be provided when using manual interface configuration"
-        fi
-    done
-    echo
-
-    netmask=""
-    while : ; do
-        read -p "Enter the number of bits in the netmask? [8-30] " netmask
-        case $netmask in
-            "") echo "The WAN interface netmask must be provided when using manual interface configuration" ; echo ; netmask='' ;;
-            8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30) read -p "The WAN interface netmask is $netmask bits? [yn] " reply
-                case $reply in
-                    [Yy]*) ;;
-                    *) netmask='' ;;
-                esac
-                ;;
-            *) echo 'The number of bits is invalid, provide a number between 8 and 30 inclusive' ; echo ; netmask='' ;;
-        esac
-        if [ -n "$netmask" ] ; then
-            break
-        fi
-    done
-    echo
-
-    gateway=""
-    while : ; do
-        gateway=$(ipv4address_get "What is the IPv4 address of the WAN gateway?")
-        if [ -n "$gateway" ] ; then
-            break
-        else
-            echo "The WAN gateway address must be provided when using manual interface configuration"
-        fi
-    done
-    echo
-
-    nameservers=""
-    local nameserver=''
-    while : ; do
-        nameserver=$(ipv4address_get "What is the IPv4 address of the WAN name server?")
-        if [ -z "$nameserver" ] ; then
-            echo "The WAN nameserver address must be provided when using manual interface configuration"
-            continue
-        fi
-        nameservers="$nameservers$nameserver"
-        read -p "Add another nameserver? [yn] " reply
-        case $reply in
-            [Yy]*) nameservers="$nameservers," ;;
-            *) break ;;
-        esac
-    done
-    echo
-
     activate_wanif=""
     while : ; do
-        read -p "Activate the WAN interface before configuring? [yes] " activate_wanif
-        case $netmask in
+        read -p "Activate the WAN interface before configuring? [Yn] " activate_wanif
+        case $activate_wanif in
             "") activate_wanif='yes' ;;
             y*|Y*) activate_wanif='yes' ;;
             n*|N*) activate_wanif='no' ;;
@@ -403,6 +452,30 @@ first_client_name_get() {
     [[ -z "$client" ]] && client="gateway"
 }
 
+client_config() {
+    echo "The VPN gateway can be configured to use DHCP, or use a static IP configuration."
+    echo "If a static configuration is selected, then all gateways must use the same static"
+    echo "configuration. This means remote modems must be configured to use the gateway"
+    echo "address provided as the LAN IP address with the same netmask."
+    echo
+    echo "A mixture of static and DHCP, or a mixture of static addresses are not supported."
+    echo
+
+    first_client_name_get
+    cproto=''
+    ifproto_get cproto
+    mkdir -p $GWYSTATEDIR
+    echo "CLIENT_PROTO=$cproto" > $GWYSTATEDIR/.gwconfig
+    if [ $cproto == 'static' ] ; then
+        declare -A cparams
+        ifinfo_get cparams
+        echo "CLIENT_ADDRESS=${cparams['address']}" >> $GWYSTATEDIR/.gwconfig
+        echo "CLIENT_NETMASK=${cparams['netmask']}" >> $GWYSTATEDIR/.gwconfig
+        echo "CLIENT_GATEWAY=${cparams['gateway']}" >> $GWYSTATEDIR/.gwconfig
+        echo "CLIENT_NAMESERVERS=${cparams['nameservers']}" >> $GWYSTATEDIR/.gwconfig
+    fi
+}
+
 #
 # Get the user and password for SNMPv3 authentication
 # On return the following variables are set
@@ -428,93 +501,107 @@ snmp_user_get() {
 create_config() {
     local cfgfile=$1
 
-    local wanif=""
+    local qotom=""
+    local wanif="enp1s0"
+    local mgmtif="enp2s0"
+    local lanifs="enp3s0,enp4s0"
+    echo
     while : ; do
-        read -p "Which interface is connected to the Internet? " wanif
-        case $wanif in
-            "")
-                read -p "The WAN interface should be determined at installation time? [yn] " reply
-                case $reply in
-                    [Yy]*) break ;;
-                    *) ;;
-                esac
+        read -p "Is the target hardware a QOTOM Q190G4N? " qotom
+        case $qotom in
+            "") ;;
+            [yY]*)
+                qotom='yes'
+                echo "Setting interface names for QOTOM Q190G4N"
                 ;;
             *)
-                read -p "The internet facing interface will be named $wanif? [yn] " reply
-                case $reply in
-                    [Yy]*) ;;
-                    *) wanif="" ;;
-                esac
+                qotom='no'
+                echo "Interface names will need to be manually provided"
                 ;;
         esac
-        if [ -n "$wanif" ] ; then
+        if [ -n "$qotom" ] ; then
             break
         fi
     done
     echo
 
-    local mgmtif=""
-    while : ; do
-        read -p "Which interface will be reserved for management? (enter 'none' for no management interface) " mgmtif
-        case $mgmtif in
-            "")
-                read -p "The management interface should be determined at installation time? [yn] " reply
-                case $reply in
-                    [Yy]*) break ;;
-                    *) ;;
-                esac
-                ;;
-            none)
-                read -p "There will be no management interface? [yn] " reply
-                case $reply in
-                    [Yy]*) ;;
-                    *) mgmtif="" ;;
-                esac
-                ;;
-            *)
-                read -p "The management interface will be named $mgmtif? [yn] " reply
-                case $reply in
-                    [Yy]*) ;;
-                    *) mgmtif="" ;;
-                esac
-                ;;
-        esac
-        if [ -n "$mgmtif" ] ; then
-            break
-        fi
-    done
-    echo
+    if [ $qotom == 'no' ] ; then
+        wanif=""
+        while : ; do
+            read -p "Which interface is connected to the Internet? " wanif
+            case $wanif in
+                "") ;;
+                *)
+                    read -p "The internet facing interface will be named [$wanif]? [Yn] " reply
+                    case $reply in
+                        [Yy]*) ;;
+                        '') ;;
+                        *) wanif="" ;;
+                    esac
+                    ;;
+            esac
+            if [ -n "$wanif" ] ; then
+                break
+            fi
+        done
+        echo
 
-    local lanifs=""
-    while : ; do
-        read -p "Which interface(s) are connected to the DMC(s)? (comma seperate multiple interface names, no spaces) " lanifs
-        case $lanifs in
-            "") read -p "The LAN interfaces should be determined at installation time? " reply
-                case $reply in
-                    [Yy]*) break ;;
-                    *) ;;
-                esac
-                ;;
-            *,*) read -p "The DMC facing interfaces are named $lanifs? [yn] " reply
-                case $reply in
-                    [Yy]*) ;;
-                    *) lanifs="" ;;
-                esac
-                ;;
-            *) read -p "The DMC facing interface is named $lanifs? [yn] " reply
-                case $reply in
-                    [Yy]*) ;;
-                    *) lanifs="" ;;
-                esac
-                ;;
-        esac
-        if [ -n "$lanifs" ] ; then
-            break
-        fi
-    done
-    echo
+        mgmtif=""
+        while : ; do
+            read -p "Which interface will be reserved for management? (enter 'none' for no management interface) " mgmtif
+            case $mgmtif in
+                "") ;;
+                none)
+                    read -p "There will be no management interface? [Yn] " reply
+                    case $reply in
+                        [Yy]*) ;;
+                        '') ;;
+                        *) mgmtif="" ;;
+                    esac
+                    ;;
+                *)
+                    read -p "The management interface will be named [$mgmtif]? [Yn] " reply
+                    case $reply in
+                        [Yy]*) ;;
+                        '') ;;
+                        *) mgmtif="" ;;
+                    esac
+                    ;;
+            esac
+            if [ -n "$mgmtif" ] ; then
+                break
+            fi
+        done
+        echo
 
-    wanifproto_get
+        lanifs=""
+        while : ; do
+            read -p "Which interface(s) are connected to the DMC(s)? (comma seperate multiple interface names, no spaces) " lanifs
+            case $lanifs in
+                "") ;;
+                *,*) read -p "The DMC facing interfaces are named [$lanifs]? [Yn] " reply
+                    case $reply in
+                        [Yy]*) ;;
+                        '') ;;
+                        *) lanifs="" ;;
+                    esac
+                    ;;
+                *) read -p "The DMC facing interface is named [$lanifs]? [Yn] " reply
+                    case $reply in
+                        [Yy]*) ;;
+                        '') ;;
+                        *) lanifs="" ;;
+                    esac
+                    ;;
+            esac
+            if [ -n "$lanifs" ] ; then
+                break
+            fi
+        done
+        echo
+    fi
+
+    ifproto_get proto
     echo
 
     if [ $proto == 'static' ] ;then
@@ -528,15 +615,6 @@ create_config() {
     local public_address=""
     while : ; do
         public_address=$(ipv4address_get "What is the public IPv4 address of the VPN server?")
-        case $public_address in
-            "")
-                read -p "The VPN server address should be determined at installation time? [yn] " reply
-                case $reply in
-                    [Yy]*) break ;;
-                    *) ;;
-                esac
-                ;;
-        esac
         if [ -n "$public_address" ] ; then
             break
         fi
@@ -548,11 +626,17 @@ create_config() {
     vpn_gateway_dns_option_get
     echo
 
-    first_client_name_get
+    client_config
     echo
 
     snmp_user_get
     echo
+
+    write_config_file $cfgfile
+}
+
+write_config_file() {
+    local cfgfile=$1
 
     cat << __EOF > $cfgfile
 # Run ./dmc-access-server -C to create a new
@@ -651,8 +735,10 @@ DNS=$dns
 #
 # CLIENT
 # The name of the first client gateway to be created
+# and the client WAN interface config
 
 CLIENT=$client
+$(cat $GWYSTATEDIR/.gwconfig)
 
 #
 # SNMP_USER
@@ -686,6 +772,14 @@ load_config() {
         port=$PORT
         dns=$DNS
         client=$CLIENT
+        mkdir -p $GWYSTATEDIR
+        echo "CLIENT_PROTO=$CLIENT_PROTO" > $GWYSTATEDIR/.gwconfig
+        if [ $CLIENT_PROTO == 'static' ] ; then
+            echo "CLIENT_ADDRESS=$CLIENT_ADDRESS" >> $GWYSTATEDIR/.gwconfig
+            echo "CLIENT_NETMASK=$CLIENT_NETMASK" >> $GWYSTATEDIR/.gwconfig
+            echo "CLIENT_GATEWAY=$CLIENT_GATEWAY" >> $GWYSTATEDIR/.gwconfig
+            echo "CLIENT_NAMESERVERS=$CLIENT_NAMESERVERS" >> $GWYSTATEDIR/.gwconfig
+    fi
         snmp_user=$SNMP_USER
         snmp_password=$SNMP_PASSWORD
     fi
@@ -981,10 +1075,10 @@ save_server_config() {
 restore_server_config() {
     local tarfile=$1
     shift
+    mkdir -p $SVRSTATEDIR
     rm -rf $SVRSTATEDIR/netplan
     rm -rf $SVRSTATEDIR/openvpn
     cp ${SERVERDIR}/server.conf $SVRSTATEDIR/server.conf
-    mkdir -p $SVRSTATEDIR
     if [ -f "$tarfile" ] ; then
         tar xp -C $TOOLDIR -f $tarfile
         rm -rf $CFGDIR.bak
@@ -1087,6 +1181,8 @@ stage_server() {
 }
 
 new_client () {
+    [ -f $GWYSTATEDIR/.gwconfig ] && . $GWYSTATEDIR/.gwconfig
+
     local serverip=$(get_server_ip)
     local clientip=$(get_client_ip)
     local netmask=$(ipcalc -nb ${VPNNET} | awk '/Netmask:/{print $2}')
@@ -1095,15 +1191,31 @@ new_client () {
     mkdir -p ${GWYSTATEDIR}/$client/etc
     # Generate netplan config for gateway
     mkdir -p ${GWYSTATEDIR}/$client/etc/netplan
+    if [ $CLIENT_PROTO == 'static' ] ; then
+        (
+            export address=$CLIENT_ADDRESS
+            export netmask=$CLIENT_NETMASK
+            export gateway=$CLIENT_GATEWAY
+            export nameservers=$CLIENT_NAMESERVERS
+            cat ${TOOLDIR}/templates/client/netplan/00-static-remote-gateway.tmpl | envsubst
+        ) > ${GWYSTATEDIR}/$client/etc/netplan/00-static-remote-gateway.yaml
+    else
+        cp ${TOOLDIR}/templates/client/netplan/00-remote-gateway.tmpl ${GWYSTATEDIR}/$client/etc/netplan/00-remote-gateway.yaml
+    fi
     for template in ${TOOLDIR}/templates/client/netplan/*.tmpl ; do
-        if [ -e $template ] ; then
-            config=$(basename -s .tmpl $template).yaml
-            (
-                export CLIENTIP=$clientip
-                export SERVERIP=$serverip
-                cat $template | envsubst
-            ) > ${GWYSTATEDIR}/$client/etc/netplan/$config
-        fi
+        case "$template" in
+            00-*.tmpl) ;;
+            *.tmpl)
+                if [ -e $template ] ; then
+                    config=$(basename -s .tmpl $template).yaml
+                    (
+                        export CLIENTIP=$clientip
+                        export SERVERIP=$serverip
+                        cat $template | envsubst
+                    ) > ${GWYSTATEDIR}/$client/etc/netplan/$config
+                fi
+                ;;
+        esac
     done
 
     # Generates the custom client.ovpn
@@ -1190,7 +1302,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
         fi
     fi
     if [ -z "$proto" ] ; then
-        wanifproto_get
+        ifproto_get proto
         echo
 
         if [ $proto == 'static' ] ;then
@@ -1282,7 +1394,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
         echo
     fi
     if [ -z "$client" ] ; then
-        first_client_name_get
+        client_config
         echo
     fi
     if [ -z "$snmp_user" -o -z "$snmp_password" ] ; then
@@ -1491,6 +1603,12 @@ verb 3" > ${SERVERDIR}/client-common.txt
     fi
     # Generates the custom client.ovpn
     new_client
+    write_config_file $SVRSTATEDIR/.svrconfig.$$
+    if [ ! -f $SVRSTATEDIR/.svrconfig ] || ! cmp -s $SVRSTATEDIR/.svrconfig $SVRSTATEDIR/.svrconfig.$$ ; then
+        mv $SVRSTATEDIR/.svrconfig.$$ $SVRSTATEDIR/.svrconfig
+    else
+        rm $SVRSTATEDIR/.svrconfig.$$
+    fi
     echo
     echo "Finished!"
     echo

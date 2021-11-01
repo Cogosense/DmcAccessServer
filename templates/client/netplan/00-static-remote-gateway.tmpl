@@ -1,0 +1,28 @@
+# This is the network config written by 'dmc-access-mgr'
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp1s0:
+      dhcp4: no
+      dhcp6: no
+      addresses:
+        - ${address}/${netmask}
+      gateway4: ${gateway}
+      routes:
+        - to: 0.0.0.0/0
+          via: ${gateway}
+          metric: 10
+      nameservers:
+        addresses: [${nameservers}]
+    enp2s0:
+      dhcp4: yes
+      dhcp4-overrides:
+        use-routes: false
+      dhcp6: no
+    enp3s0:
+      dhcp4: no
+      dhcp6: no
+    enp4s0:
+      dhcp4: no
+      dhcp6: no
