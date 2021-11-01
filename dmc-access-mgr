@@ -65,6 +65,9 @@ OPTIONS:
  -D               Download all the software required now. This allows the server
                   to be configured later when no Internet access is available.
  -r  [TARFILE]    Restore DMC access server config from the TARFILE.
+ -R               Recover the VPN server from a backup. The backup has alreasy
+                  been extracted in the current directory. This is used to initialize
+                  a spare replacement server to replace a failed DMC access server.
  -s  [IP|TARFILE] Save server config directly to IP address, or save to TARFILE
                   for manual transfer to standby system.
  -x               Turn on bash shell tracing.
@@ -465,14 +468,14 @@ client_config() {
     cproto=''
     ifproto_get cproto
     mkdir -p $GWYSTATEDIR
-    echo "CLIENT_PROTO=$cproto" > $GWYSTATEDIR/.gwconfig
+    echo "CLIENT_PROTO=$cproto" > $STATEDIR/.gwconfig
     if [ $cproto == 'static' ] ; then
         declare -A cparams
         ifinfo_get cparams
-        echo "CLIENT_ADDRESS=${cparams['address']}" >> $GWYSTATEDIR/.gwconfig
-        echo "CLIENT_NETMASK=${cparams['netmask']}" >> $GWYSTATEDIR/.gwconfig
-        echo "CLIENT_GATEWAY=${cparams['gateway']}" >> $GWYSTATEDIR/.gwconfig
-        echo "CLIENT_NAMESERVERS=${cparams['nameservers']}" >> $GWYSTATEDIR/.gwconfig
+        echo "CLIENT_ADDRESS=${cparams['address']}" >> $STATEDIR/.gwconfig
+        echo "CLIENT_NETMASK=${cparams['netmask']}" >> $STATEDIR/.gwconfig
+        echo "CLIENT_GATEWAY=${cparams['gateway']}" >> $STATEDIR/.gwconfig
+        echo "CLIENT_NAMESERVERS=${cparams['nameservers']}" >> $STATEDIR/.gwconfig
     fi
 }
 
@@ -738,7 +741,7 @@ DNS=$dns
 # and the client WAN interface config
 
 CLIENT=$client
-$(cat $GWYSTATEDIR/.gwconfig)
+$(cat $STATEDIR/.gwconfig)
 
 #
 # SNMP_USER
@@ -773,12 +776,12 @@ load_config() {
         dns=$DNS
         client=$CLIENT
         mkdir -p $GWYSTATEDIR
-        echo "CLIENT_PROTO=$CLIENT_PROTO" > $GWYSTATEDIR/.gwconfig
+        echo "CLIENT_PROTO=$CLIENT_PROTO" > $STATEDIR/.gwconfig
         if [ $CLIENT_PROTO == 'static' ] ; then
-            echo "CLIENT_ADDRESS=$CLIENT_ADDRESS" >> $GWYSTATEDIR/.gwconfig
-            echo "CLIENT_NETMASK=$CLIENT_NETMASK" >> $GWYSTATEDIR/.gwconfig
-            echo "CLIENT_GATEWAY=$CLIENT_GATEWAY" >> $GWYSTATEDIR/.gwconfig
-            echo "CLIENT_NAMESERVERS=$CLIENT_NAMESERVERS" >> $GWYSTATEDIR/.gwconfig
+            echo "CLIENT_ADDRESS=$CLIENT_ADDRESS" >> $STATEDIR/.gwconfig
+            echo "CLIENT_NETMASK=$CLIENT_NETMASK" >> $STATEDIR/.gwconfig
+            echo "CLIENT_GATEWAY=$CLIENT_GATEWAY" >> $STATEDIR/.gwconfig
+            echo "CLIENT_NAMESERVERS=$CLIENT_NAMESERVERS" >> $STATEDIR/.gwconfig
     fi
         snmp_user=$SNMP_USER
         snmp_password=$SNMP_PASSWORD
@@ -1097,6 +1100,25 @@ restore_server_config() {
     fi
 }
 
+recover_server() {
+    if [ -d $SVRSTATEDIR -a -f $STATEDIR/.svrconfig ] ; then
+        load_config $STATEDIR/.svrconfig
+        rm -rf $CFGDIR
+        rm -rf $NETPLANDIR
+        cp -a $SVRSTATEDIR/openvpn $CFGDIR
+        cp -a $SVRSTATEDIR/netplan $NETPLANDIR
+        if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
+            netplan generate
+            netplan apply
+            # Restart the OpenVPN service
+            systemctl restart openvpn-server@server.service
+        fi
+    else
+        >&2 echo "error: no backup found: extract backup archive in current directoryi $TOOLDIR"
+        return 2
+    fi
+}
+
 setup_server_snmpd () {
     local user="$1"
     local password="$2"
@@ -1181,7 +1203,7 @@ stage_server() {
 }
 
 new_client () {
-    [ -f $GWYSTATEDIR/.gwconfig ] && . $GWYSTATEDIR/.gwconfig
+    [ -f $STATEDIR/.gwconfig ] && . $STATEDIR/.gwconfig
 
     local serverip=$(get_server_ip)
     local clientip=$(get_client_ip)
@@ -1267,12 +1289,13 @@ new_client () {
 # MAIN starts here
 # Process options
 
-while getopts hC:c:Dr:s:x c ; do
+while getopts hC:c:DRr:s:x c ; do
     case $c in
         h) usage ; exit 0 ;;
         C) create_config "$OPTARG" ; exit 0 ;;
         c) load_config "$OPTARG" ;;
         D) isroot ; stage_server ; exit 0 ;;
+        R) opt_R='yes' ; isroot ; recover_server ; exit $? ;;
         r) opt_r="$OPTARG" ; isroot ; restore_server_config $opt_r ; exit $? ;;
         s) opt_s="$OPTARG" ; isroot ; save_server_config $opt_s ; exit $? ;;
         x) set -x ;;
@@ -1603,11 +1626,8 @@ verb 3" > ${SERVERDIR}/client-common.txt
     fi
     # Generates the custom client.ovpn
     new_client
-    write_config_file $SVRSTATEDIR/.svrconfig.$$
-    if [ ! -f $SVRSTATEDIR/.svrconfig ] || ! cmp -s $SVRSTATEDIR/.svrconfig $SVRSTATEDIR/.svrconfig.$$ ; then
-        mv $SVRSTATEDIR/.svrconfig.$$ $SVRSTATEDIR/.svrconfig
-    else
-        rm $SVRSTATEDIR/.svrconfig.$$
+    if [ ! -f $STATEDIR/.svrconfig ] ; then
+        write_config_file $STATEDIR/.svrconfig
     fi
     echo
     echo "Finished!"
