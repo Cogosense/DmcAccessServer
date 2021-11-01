@@ -467,7 +467,7 @@ client_config() {
     first_client_name_get
     cproto=''
     ifproto_get cproto
-    mkdir -p $GWYSTATEDIR
+    mkdir -p $STATEDIR
     echo "CLIENT_PROTO=$cproto" > $STATEDIR/.gwconfig
     if [ $cproto == 'static' ] ; then
         declare -A cparams
@@ -775,7 +775,7 @@ load_config() {
         port=$PORT
         dns=$DNS
         client=$CLIENT
-        mkdir -p $GWYSTATEDIR
+        mkdir -p $STATEDIR
         echo "CLIENT_PROTO=$CLIENT_PROTO" > $STATEDIR/.gwconfig
         if [ $CLIENT_PROTO == 'static' ] ; then
             echo "CLIENT_ADDRESS=$CLIENT_ADDRESS" >> $STATEDIR/.gwconfig
