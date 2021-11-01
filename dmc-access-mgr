@@ -757,6 +757,10 @@ SNMP_PASSWORD=$snmp_password
 __EOF
 }
 
+# load config
+# turning IPv6 off
+# Note: in future if IPv6 is needed, the IPv6
+# address can be gathered and set into the config file
 load_config() {
     local cfgfile=$1
     if [ -f "$cfgfile" ] ; then
@@ -764,6 +768,7 @@ load_config() {
         wanif=$WANIF
         mgmtif=$MGMTIF
         lanifs=$LANIFS
+        ip6=''
         proto=$PROTO
         address=$ADDRESS
         netmask=$NETMASK
@@ -1101,6 +1106,7 @@ restore_server_config() {
 }
 
 recover_server() {
+    stage_server
     if [ -d $SVRSTATEDIR -a -f $STATEDIR/.svrconfig ] ; then
         load_config $STATEDIR/.svrconfig
         rm -rf $CFGDIR
@@ -1110,9 +1116,15 @@ recover_server() {
         if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
             netplan generate
             netplan apply
-            # Restart the OpenVPN service
-            systemctl restart openvpn-server@server.service
         fi
+
+        enable_ip_forwarding
+
+        generate_vpn_firewall_config
+
+        generate_se_linux_config
+
+        enable_and_start_dmc_access_server
     else
         >&2 echo "error: no backup found: extract backup archive in current directory: $TOOLDIR"
         return 2
@@ -1285,56 +1297,12 @@ new_client () {
     echo ""
 }
 
-
-# MAIN starts here
-# Process options
-
-while getopts hC:c:DRr:s:x c ; do
-    case $c in
-        h) usage ; exit 0 ;;
-        C) create_config "$OPTARG" ; exit 0 ;;
-        c) load_config "$OPTARG" ;;
-        D) isroot ; stage_server ; exit 0 ;;
-        R) opt_R='yes' ; isroot ; recover_server ; exit $? ;;
-        r) opt_r="$OPTARG" ; isroot ; restore_server_config $opt_r ; exit $? ;;
-        s) opt_s="$OPTARG" ; isroot ; save_server_config $opt_s ; exit $? ;;
-        x) set -x ;;
-        \?) usage ; >&2 echo "unknown option: $c" ; exit 1 ;;
-    esac
-done
-
-isroot
-
-if [[ ! -e ${SERVERDIR}/server.conf ]]; then
-    clear
-    echo 'Welcome to this Dali DMC Access Server installer!'
-    echo "The network interfaces will be reconfigured first to use netplan and networkd"
-    if [ -z "$wanif" -o -z "$mgmtif" -o -z "$lanifs" ] ; then
-        if detect_qotom ; then
-            echo "This appears to be a Qotom network appliance"
-            echo "    interface 1 should be connected to the Internet/Modem"
-            echo "    interface 2 is available for connection to a management machine"
-            echo "    interfaces 3 and 4 should be connected to the DMC"
-            wanif='enp1s0'
-            mgmtif="enp2s0"
-            lanifs="enp3s0,enp4s0"
-        else
-            [ -z "$wanif" ] && select_wanif
-            [ -z "$mgmtif" ] && select_mgmtif
-            [ -z "$lanifs" ] && select_lanifs
-        fi
-    fi
-    if [ -z "$proto" ] ; then
-        ifproto_get proto
-        echo
-
-        if [ $proto == 'static' ] ;then
-            staticifinfo_get
-        fi
-    fi
-    echo "Using WAN interface $wanif"
-    echo "Using DMC interface(s) $lanifs"
-    create_wanif $wanif $mgmtif
+# The following variable is set on return:
+#   address - the local IP address the server will bind to
+#             (this will be on the interface the OpenVPN packets
+#              will be received)
+#
+auto_detect_ipv4() {
     if [ -z "$address" ] ; then
         # If system has a single IPv4, it is selected automatically. Else, ask the user
         if [[ $(ip -4 addr | grep inet | grep -vEc '127(\.[0-9]{1,3}){3}') -eq 1 ]]; then
@@ -1363,6 +1331,12 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
             fi
         fi
     fi
+}
+
+# The following variable is set on return:
+#   public_address - the public IP address the gateway will contact the server at
+#
+auto_detect_public_ipv4() {
     if [ -z "$public_address" ] ; then
         # If $address is a private IP address, the server must be behind NAT
         if echo "$address" | grep -qE '^(10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.|192\.168)'; then
@@ -1388,49 +1362,41 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
             fi
         fi
     fi
+}
 
-    # If system has a single IPv6, it is selected automatically
-    if [[ $(ip -6 addr | grep -c 'inet6 [23]') -eq 1 ]]; then
-        ip6=$(ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}')
-    fi
-    # If system has multiple IPv6, ask the user to select one
-    if [[ $(ip -6 addr | grep -c 'inet6 [23]') -gt 1 ]]; then
-        number_of_ip6=$(ip -6 addr | grep -c 'inet6 [23]')
-        echo
-        echo "Which IPv6 address should be used?"
-        ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}' | nl -s ') '
-        read -p "IPv6 address [1]: " ip6_number
-        until [[ -z "$ip6_number" || "$ip6_number" =~ ^[0-9]+$ && "$ip6_number" -le "$number_of_ip6" ]]; do
-            echo "$ip6_number: invalid selection."
+# The following variable is set on return:
+#   ipv6 - the local IPv6 address to be used
+#
+auto_detect_ipv6() {
+    if [ -z "$ip6" ] ; then
+        # If system has a single IPv6, it is selected automatically
+        if [[ $(ip -6 addr | grep -c 'inet6 [23]') -eq 1 ]]; then
+            ip6=$(ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}')
+        fi
+        # If system has multiple IPv6, ask the user to select one
+        if [[ $(ip -6 addr | grep -c 'inet6 [23]') -gt 1 ]]; then
+            number_of_ip6=$(ip -6 addr | grep -c 'inet6 [23]')
+            echo
+            echo "Which IPv6 address should be used?"
+            ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}' | nl -s ') '
             read -p "IPv6 address [1]: " ip6_number
-        done
-        [[ -z "$ip6_number" ]] && ip6_number="1"
-        ip6=$(ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}' | sed -n "$ip6_number"p)
+            until [[ -z "$ip6_number" || "$ip6_number" =~ ^[0-9]+$ && "$ip6_number" -le "$number_of_ip6" ]]; do
+                echo "$ip6_number: invalid selection."
+                read -p "IPv6 address [1]: " ip6_number
+            done
+            [[ -z "$ip6_number" ]] && ip6_number="1"
+            ip6=$(ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}' | sed -n "$ip6_number"p)
+        fi
     fi
-    echo
-    if [ -z "$protocol" -o -z "$port" ] ; then
-        vpn_protocol_get
-        echo
-    fi
-    if [ -z "$dns" ] ; then
-        vpn_gateway_dns_option_get
-        echo
-    fi
-    if [ -z "$client" ] ; then
-        client_config
-        echo
-    fi
-    if [ -z "$snmp_user" -o -z "$snmp_password" ] ; then
-        snmp_user_get
-        echo
-    fi
-    echo "DMC Access Server installation is ready to begin."
-    read -n1 -r -p "Press any key to continue..."
-    create_dmc_lanbr $lanifs
+}
 
-    stage_server
-
-    VPNSERVER=$(ipcalc -nb ${VPNNET} | awk '/^Address:/{printf "%s ", $2}; /^Netmask:/{print $2}')
+#
+# Create the CA certificate
+# Create the server RSA key and certificate
+# Create the server certificate revoke list
+# Create the Diffie Helman Key exchange parameters
+#
+generate_easyrsa_config() {
 
     cd ${SERVERDIR}/easy-rsa/
     # Create the PKI, set up the CA and the server and client certificates
@@ -1456,6 +1422,13 @@ YdEIqUuyyOP7uWrat2DX9GgdT0Kj3jlN9K5W7edjcrsZCwenyO4KbXCeAvzhzffi
 7MA0BM0oNC9hkXL+nOmFg/+OTxIy7vKBg8P+OxtMb61zO7X8vC7CIAXFjvGDfRaD
 ssbzSibBsu/6iGtCOGEoXJf//////////wIBAg==
 -----END DH PARAMETERS-----' > ${SERVERDIR}/dh.pem
+}
+
+#
+# Generate the OpenVPN server configuration
+#
+generate_openvpn_server_config() {
+    VPNSERVER=$(ipcalc -nb ${VPNNET} | awk '/^Address:/{printf "%s ", $2}; /^Netmask:/{print $2}')
     # Generate server.conf
     echo "local $address
 port $port
@@ -1528,6 +1501,14 @@ crl-verify crl.pem" >> ${SERVERDIR}/server.conf
     if [[ "$protocol" = "udp" ]]; then
         echo "explicit-exit-notify" >> ${SERVERDIR}/server.conf
     fi
+}
+
+#
+# Enable IPv4 and optionally IPv6 forwarding.
+#
+# IPv6 is enabled if the variable 'ip6' is not empty
+#
+enable_ip_forwarding() {
     # Enable net.ipv4.ip_forward for the system
     echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/30-openvpn-forward.conf
     # Enable without waiting for a reboot or service restart
@@ -1538,6 +1519,16 @@ crl-verify crl.pem" >> ${SERVERDIR}/server.conf
         # Enable without waiting for a reboot or service restart
         echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
     fi
+}
+
+#
+# Generate a firewall for the VPN server
+#
+# Use firewalld if installed and running, otherwise
+# use iptables directly and create a systemd service
+# to apply them on system boot
+#
+generate_vpn_firewall_config() {
     if systemctl is-active --quiet firewalld.service; then
         # Using both permanent and not permanent rules to avoid a firewalld
         # reload.
@@ -1591,6 +1582,15 @@ ExecStop=$ip6tables_path -D FORWARD -m state --state RELATED,ESTABLISHED -j ACCE
 WantedBy=multi-user.target" >> /etc/systemd/system/openvpn-iptables.service
         systemctl enable --now openvpn-iptables.service
     fi
+}
+
+#
+# Allow access to the selected VPN protocol port
+#
+# Inform SELinux of the proto and port being used by
+# the OpenVPN server
+#
+generate_se_linux_config() {
     # If SELinux is enabled and a custom port was selected, we need this
     if sestatus 2>/dev/null | grep "Current mode" | grep -q "enforcing" && [[ "$port" != 1194 ]]; then
         #
@@ -1598,6 +1598,14 @@ WantedBy=multi-user.target" >> /etc/systemd/system/openvpn-iptables.service
         #
         semanage port -a -t openvpn_port_t -p "$protocol" "$port"
     fi
+}
+
+#
+# Create the common client config itemplate that is
+# included in new gateway configurations
+# when they are added
+#
+generate_common_openvpn_client_config() {
     # If the server is behind NAT, use the correct IP address
     [[ -n "$public_address" ]] && address="$public_address"
     # client-common.txt is created so we have a template to add further users later
@@ -1616,6 +1624,13 @@ ignore-unknown-option block-outside-dns
 block-outside-dns
 comp-lzo
 verb 3" > ${SERVERDIR}/client-common.txt
+}
+
+#
+# Enable and Start the OpenVPN server
+# Enable and Start the SNMPv3 server
+#
+enable_and_start_dmc_access_server() {
     # Enable and start the OpenVPN service
     systemctl enable --now openvpn-server@server.service
     if [ ! -f $STATEDIR/.snmpauth ] ; then
@@ -1624,6 +1639,101 @@ verb 3" > ${SERVERDIR}/client-common.txt
         echo "snmp_user=\"$snmp_user\"" > $STATEDIR/.snmpauth
         echo "snmp_password=\"$snmp_password\"" >> $STATEDIR/.snmpauth
     fi
+}
+
+# MAIN starts here
+# Process options
+
+while getopts hC:c:DRr:s:x c ; do
+    case $c in
+        h) usage ; exit 0 ;;
+        C) create_config "$OPTARG" ; exit 0 ;;
+        c) load_config "$OPTARG" ;;
+        D) isroot ; stage_server ; exit 0 ;;
+        R) opt_R='yes' ; isroot ; recover_server ; exit $? ;;
+        r) opt_r="$OPTARG" ; isroot ; restore_server_config $opt_r ; exit $? ;;
+        s) opt_s="$OPTARG" ; isroot ; save_server_config $opt_s ; exit $? ;;
+        x) set -x ;;
+        \?) usage ; >&2 echo "unknown option: $c" ; exit 1 ;;
+    esac
+done
+
+isroot
+
+if [[ ! -e ${SERVERDIR}/server.conf ]]; then
+    clear
+    echo 'Welcome to this Dali DMC Access Server installer!'
+    echo "The network interfaces will be reconfigured first to use netplan and networkd"
+    if [ -z "$wanif" -o -z "$mgmtif" -o -z "$lanifs" ] ; then
+        if detect_qotom ; then
+            echo "This appears to be a Qotom network appliance"
+            echo "    interface 1 should be connected to the Internet/Modem"
+            echo "    interface 2 is available for connection to a management machine"
+            echo "    interfaces 3 and 4 should be connected to the DMC"
+            wanif='enp1s0'
+            mgmtif="enp2s0"
+            lanifs="enp3s0,enp4s0"
+        else
+            [ -z "$wanif" ] && select_wanif
+            [ -z "$mgmtif" ] && select_mgmtif
+            [ -z "$lanifs" ] && select_lanifs
+        fi
+    fi
+    if [ -z "$proto" ] ; then
+        ifproto_get proto
+        echo
+
+        if [ $proto == 'static' ] ;then
+            staticifinfo_get
+        fi
+    fi
+    echo "Using WAN interface $wanif"
+    echo "Using DMC interface(s) $lanifs"
+    create_wanif $wanif $mgmtif
+
+    auto_detect_ipv4
+
+    auto_detect_public_ipv4
+
+    auto_detect_ipv6
+
+    echo
+    if [ -z "$protocol" -o -z "$port" ] ; then
+        vpn_protocol_get
+        echo
+    fi
+    if [ -z "$dns" ] ; then
+        vpn_gateway_dns_option_get
+        echo
+    fi
+    if [ -z "$client" ] ; then
+        client_config
+        echo
+    fi
+    if [ -z "$snmp_user" -o -z "$snmp_password" ] ; then
+        snmp_user_get
+        echo
+    fi
+    echo "DMC Access Server installation is ready to begin."
+    read -n1 -r -p "Press any key to continue..."
+    create_dmc_lanbr $lanifs
+
+    stage_server
+
+    generate_easyrsa_config
+
+    generate_openvpn_server_config
+
+    enable_ip_forwarding
+
+    generate_vpn_firewall_config
+
+    generate_se_linux_config
+
+    generate_common_openvpn_client_config
+
+    enable_and_start_dmc_access_server
+
     # Generates the custom client.ovpn
     new_client
     if [ ! -f $STATEDIR/.svrconfig ] ; then
