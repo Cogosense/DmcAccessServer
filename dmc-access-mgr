@@ -1114,7 +1114,7 @@ recover_server() {
             systemctl restart openvpn-server@server.service
         fi
     else
-        >&2 echo "error: no backup found: extract backup archive in current directoryi $TOOLDIR"
+        >&2 echo "error: no backup found: extract backup archive in current directory: $TOOLDIR"
         return 2
     fi
 }
