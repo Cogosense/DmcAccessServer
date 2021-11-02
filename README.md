@@ -184,6 +184,49 @@ Connection via a management port is achieved with a laptop running the Windows
 Open TFTPD, direct connect a CAT6 cable between laptop and Qotom management port,
 then use Putty to SSH into the IP address assigned.
 
+## Restoring an Access Server
+
+In the event an access server fails, a spare can be restored with the state of the
+failed unit provided you have a recent state backup of the failed unit.
+
+A state backup is performed with the command:
+
+    sudo ./dmc-access-mgr -s state-server1.tar.gz
+
+This should be done after initial install and each time a new gateway is added. The
+resultant state archive should be stored off device somewhere safe as it contains
+the cryptographic keys required to create gateways and encrypt sessions.
+
+On the spare unit install Ubuntu as described in the section
+[OS Install on Qotom](#os-install-on-qotom).
+
+AFter installed the OS, updating the software packages and installing the necessary
+additional packages, copy the saved state archive to the spare unit (IP addresses will
+vary):
+
+    scp state-server1.tar.gz dali@192.168.86.114:
+
+Clone the DmcAccessServer repo.
+
+    git clone https://github.com/Cogosense/DmcAccessServer
+    cd DmcAccessServer
+
+Extract the state archive and restore it:
+
+    tar xf ../state-server1.tar.gz
+    sudo ./dmc-access-mgr -R
+
+This results in the  following outputs:
+
+    Created symlink /etc/systemd/system/multi-user.target.wants/openvpn-iptables.service → /etc/systemd/system/openvpn-iptables.service.
+    Created symlink /etc/systemd/system/multi-user.target.wants/openvpn-server@server.service → /lib/systemd/system/openvpn-server@.service.
+    info: reboot server to complete recovery, note management IP may change
+
+The server should now be rebooted to apply the changes. The reboot is manual to ensure
+the recovery command completes without losing network connectivity. After rebooting,
+the management IP may change and you may need to switch the network connection from
+port 1 to port 2.
+
 ## Creating a Standby Access Server
 
 A cold standby DMC access server is supported. The configuration of the active DMC
