@@ -1115,7 +1115,6 @@ recover_server() {
         cp -a $SVRSTATEDIR/netplan $NETPLANDIR
         if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
             netplan generate
-            netplan apply
         fi
 
         enable_ip_forwarding
