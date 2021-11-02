@@ -54,7 +54,7 @@ Reboot and login, start a terminal and do a software update:
 
     sudo apt update
     sudo apt -y upgrade -y
-    sudo apt install -y git openssh-server snmpd snmp libsnmp-dev
+    sudo apt install -y git openssh-server snmpd snmp libsnmp-dev wondershaper
 
 ## Initial Installation of the DMC Access Server
 
@@ -318,3 +318,38 @@ only support IPv6 addresses with scope `link`. Any IPv6 traffic received on eith
 bridge will be sent via the GRETAP tunnel to the other bridge. From the DMC or antenna
 point of view, it looks to all practical intents and purposes that they are directly
 connected. The gateway and the Access Server are essentially transparent.
+
+## Simulating Slow Links on Fast Networks
+
+The main use case for the DMC Access Server usually involves creating a transport
+tunnel across a slower legacy network. The __wondershaper__ tool can be used to
+shape the traffic characteristics on the WAN interfaces of the gateway for traffic
+limiting on bandwidth constrained networks, or for testing slow network connections
+over full speed ethernet networks.
+
+For example to emulate an EDGE network:
+
+    sudo wondershaper enp1s0 236 118
+
+This will limit bandwidth on a gateway to 236kb/s download and 118kb/s upload,
+apprx. the bandwidth in a 4 channel EDGE network.  To clear traffic shaping limits:
+
+    sudo wondershaper clear enp1s0
+
+If traffic shaping is required in production, a systemd service script would need
+to be created on the gateway to apply the bandwidth limits at boot time. For example:
+
+    cat < __EOF > /etc/systemd/system/dmc-gateway-traffic-shaping.service
+    [Unit]
+    Before=network.target
+    [Service]
+    Type=oneshot
+    ExecStart=wondershaper enp1s0 236 118
+    ExecStop=wondershaper clear enp1s0
+    RemainAfterExit=yes
+    WantedBy=multi-user.target
+    __EOF
+    systemctl enable --now dmc-gateway-traffic-shaping.service
+
+This is not currently part of the gateway setup as the use of traffic shaping beyond
+lab testing is currently not known.
