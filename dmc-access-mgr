@@ -1120,11 +1120,12 @@ recover_server() {
 
         enable_ip_forwarding
 
-        generate_vpn_firewall_config
+        generate_vpn_firewall_config defer
 
         generate_se_linux_config
 
-        enable_and_start_dmc_access_server
+        enable_and_start_dmc_access_server defer
+        >&2 echo "info: reboot server to complete recovery, note management IP may change"
     else
         >&2 echo "error: no backup found: extract backup archive in current directory: $TOOLDIR"
         return 2
@@ -1529,6 +1530,7 @@ enable_ip_forwarding() {
 # to apply them on system boot
 #
 generate_vpn_firewall_config() {
+    local defer=$1
     if systemctl is-active --quiet firewalld.service; then
         # Using both permanent and not permanent rules to avoid a firewalld
         # reload.
@@ -1580,7 +1582,11 @@ ExecStop=$ip6tables_path -D FORWARD -m state --state RELATED,ESTABLISHED -j ACCE
         echo "RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target" >> /etc/systemd/system/openvpn-iptables.service
-        systemctl enable --now openvpn-iptables.service
+        if [ "$defer" == 'defer' ] ; then
+            systemctl enable openvpn-iptables.service
+        else
+            systemctl enable --now openvpn-iptables.service
+        fi
     fi
 }
 
@@ -1631,8 +1637,13 @@ verb 3" > ${SERVERDIR}/client-common.txt
 # Enable and Start the SNMPv3 server
 #
 enable_and_start_dmc_access_server() {
+    local defer=$1
     # Enable and start the OpenVPN service
-    systemctl enable --now openvpn-server@server.service
+    if [ "$defer" == 'defer' ] ; then
+        systemctl enable openvpn-server@server.service
+    else
+        systemctl enable --now openvpn-server@server.service
+    fi
     if [ ! -f $STATEDIR/.snmpauth ] ; then
         # Setup SNMP monitoring
         setup_server_snmpd "$snmp_user" "$snmp_password"
