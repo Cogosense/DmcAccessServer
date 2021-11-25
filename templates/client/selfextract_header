@@ -145,6 +145,12 @@ else
     systemctl start snmpd
 fi
 
+# On Ubuntu the /run directory is tmpfs, so it is cleared on
+# reboot. We need to put the .run/openvpn directory back.
+if ! grep -q 'mkdir' /lib/systemd/system/openvpn.service ; then
+    sed -i.bak '/ExecStart=\/bin\/true/a ExecStart=mkdir -p /run/openvpn' \
+        /lib/systemd/system/openvpn.service
+fi
 systemctl daemon-reload
 systemctl restart openvpn
 netplan generate
