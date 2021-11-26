@@ -1,0 +1,39 @@
+#!/bin/bash
+#
+# Use to reshar an existing gateway installer if the
+# saved configuration is changed by hand.
+#
+TOOLDIR=$(cd $(dirname $0) && pwd)
+if [ -f .snmpauth ] ; then
+    STATEDIR=$PWD
+elif [ -f $TOOLDIR/state/.snmpauth ] ; then
+    STATEDIR=$TOOLDIR/state
+else
+    2>& echo "state archive not found"
+fi
+
+. $STATEDIR/.snmpauth
+GATEWAYSDIR=$STATEDIR/gateways
+
+client=$1
+
+[ -z "$client" ] && {
+    >&2 echo "usage: $0 <gateway name>:"
+    >&2 echo "    reshar an exisiting gateway installer with manually updated configuration"
+    exit 2
+}
+
+[ -d $GATEWAYSDIR/$client ] || {
+    >&2 echo "$client not found in $GATEWAYSDIR"
+    exit 2
+}
+
+(
+    echo '#!/bin/bash'
+    echo "SNMP_USER=\"$snmp_user\""
+    echo "SNMP_PASSWORD=\"$snmp_password\""
+    cat $TOOLDIR/templates/client/selfextract_header
+    tar cz -C $GATEWAYSDIR/$client .
+) > $GATEWAYSDIR/install_$client.shar
+
+exit 0
