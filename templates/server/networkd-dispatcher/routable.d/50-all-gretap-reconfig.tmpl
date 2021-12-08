@@ -1,0 +1,8 @@
+#!/bin/sh
+
+for gretap in $(ip link show master lanbr0 | awk '/gretap/{split($2,a,/@/); print a[1]}') ; do
+    remote=$(ip -d link show $gretap | awk '/^[ ]*gretap/{print $3}')
+    local=$(ip -d link show $gretap | awk '/^[ ]*gretap/{print $5}')
+    ip link del $gretap
+    ip link add $gretap type gretap local $local remote $remote ignore-df nopmtudisc
+done

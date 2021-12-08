@@ -18,6 +18,7 @@ STATEDIR=$TOOLDIR/state
 GWYSTATEDIR=$STATEDIR/gateways
 SVRSTATEDIR=$STATEDIR/server
 : ${NETPLANDIR:=/etc/netplan}
+: ${NETWORKDDIR:=/etc/networkd-dispatcher}
 progname=$(basename $0)
 activate_wanif='yes'
 
@@ -933,6 +934,10 @@ create_dmc_lanbr() {
             ethernets="$ethernets $(interface=$interface envsubst < ${TOOLDIR}/templates/server/netplan/dmc_ethernet.tmpl)"
         done
         cat < ${TOOLDIR}/templates/server/netplan/30-bridge-config.tmpl | ethernets="$ethernets" interfaces="$interfaces" envsubst > ${NETPLANDIR}/30-bridge-config.yaml
+        #
+        # Fixup hook script to add ignore-df and nopmtudisc options to the GRETAP tunnels
+        #
+        cp ${TOOLDIR}/templates/server/networkd-dispatcher/routable.d/50-all-gretap-reconfig.tmpl ${NETWORKDDIR}/routable.d/50-all-gretap-reconfig
     )
     netplan generate
     netplan apply
@@ -1231,26 +1236,29 @@ new_client () {
             export netmask=$CLIENT_NETMASK
             export gateway=$CLIENT_GATEWAY
             export nameservers=$CLIENT_NAMESERVERS
-            cat ${TOOLDIR}/templates/client/netplan/00-static-remote-gateway.tmpl | envsubst
+            cat ${TOOLDIR}/templates/client/netplan/00-static-remote-gateway.yaml.tmpl | envsubst
         ) > ${GWYSTATEDIR}/$client/etc/netplan/00-static-remote-gateway.yaml
     else
-        cp ${TOOLDIR}/templates/client/netplan/00-remote-gateway.tmpl ${GWYSTATEDIR}/$client/etc/netplan/00-remote-gateway.yaml
+        cp ${TOOLDIR}/templates/client/netplan/00-remote-gateway.yaml.tmpl ${GWYSTATEDIR}/$client/etc/netplan/00-remote-gateway.yaml
     fi
-    for template in ${TOOLDIR}/templates/client/netplan/*.tmpl ; do
+    for template in $(find ${TOOLDIR}/templates/client -name '*.tmpl') ; do
         case "$template" in
-            00-*.tmpl) ;;
+            */netplan/00-*.tmpl) ;;
             *.tmpl)
                 if [ -e $template ] ; then
-                    config=$(basename -s .tmpl $template).yaml
+                    config=$(basename -s .tmpl $template)
+                    dir=$(dirname $template | sed "s|^${TOOLDIR}/templates/client|${GWYSTATEDIR}/$client|")
+                    mkdir -p $dir
                     (
                         export CLIENTIP=$clientip
                         export SERVERIP=$serverip
                         cat $template | envsubst
-                    ) > ${GWYSTATEDIR}/$client/etc/netplan/$config
+                    ) > $dir/$config
                 fi
                 ;;
         esac
     done
+    chmod -R a+x ${GWYSTATEDIR}/$client/etc/networkd-dispatcher/
 
     # Generates the custom client.ovpn
     {
