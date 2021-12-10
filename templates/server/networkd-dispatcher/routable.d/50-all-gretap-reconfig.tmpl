@@ -4,5 +4,5 @@ for gretap in $(ip link show master lanbr0 | awk '/gretap/{split($2,a,/@/); prin
     remote=$(ip -d link show $gretap | awk '/^[ ]*gretap/{print $3}')
     local=$(ip -d link show $gretap | awk '/^[ ]*gretap/{print $5}')
     ip link del $gretap
-    ip link add $gretap type gretap local $local remote $remote ignore-df nopmtudisc
+    ip link add $gretap mtu 1500 type gretap local $local remote $remote ignore-df nopmtudisc
 done
