@@ -1503,6 +1503,7 @@ log /var/log/openvpn/openvpn.log
 persist-key
 persist-tun
 verb 3
+keepalive 15 60
 compress lz4-v2
 push \"compress lz4-v2\"
 crl-verify crl.pem" >> ${SERVERDIR}/server.conf
