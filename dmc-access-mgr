@@ -1500,8 +1500,6 @@ cipher AES-256-CBC
 user nobody
 group $group_name
 log /var/log/openvpn/openvpn.log
-persist-key
-persist-tun
 verb 3
 keepalive 15 60
 compress lz4-v2
@@ -1629,8 +1627,6 @@ proto $protocol
 remote $address $port
 resolv-retry infinite
 nobind
-persist-key
-persist-tun
 remote-cert-tls server
 auth SHA512
 cipher AES-256-CBC
