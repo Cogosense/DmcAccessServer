@@ -71,10 +71,15 @@ if [ $opt_d == 'yes' ] ; then
     echo "Uninstalling gateway"
     for yaml in /etc/netplan/*.yaml ; do
         case $yaml in
-            00*) ;;
             *) rm $yaml ;;
         esac
     done
+    cat << __EOF > /etc/netplan/01-network-manager-all.yaml
+# Let NetworkManager manage all devices on this system
+network:
+  version: 2
+  renderer: NetworkManager
+__EOF
     for openvpnconf in /etc/openvpn/*.conf; do
         if [ -e $openvpnconf ] ; then
             service=$(basename -s .conf ${openvpnconf}).service
