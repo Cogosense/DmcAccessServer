@@ -78,8 +78,8 @@ if [ $opt_d == 'yes' ] ; then
     for openvpnconf in /etc/openvpn/*.conf; do
         if [ -e $openvpnconf ] ; then
             service=$(basename -s .conf ${openvpnconf}).service
-            systemctl stop $service
-            systemctl disable $service
+            systemctl stop openvpn@$service
+            systemctl disable openvpn@$service
             rm $openvpnconf
         fi
     done
