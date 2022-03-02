@@ -66,7 +66,7 @@ OPTIONS:
  -D               Download all the software required now. This allows the server
                   to be configured later when no Internet access is available.
  -r  [TARFILE]    Restore DMC access server config from the TARFILE.
- -R               Recover the VPN server from a backup. The backup has alreasy
+ -R               Recover the VPN server from a backup. The backup has already
                   been extracted in the current directory. This is used to initialize
                   a spare replacement server to replace a failed DMC access server.
  -s  [IP|TARFILE] Save server config directly to IP address, or save to TARFILE
@@ -1086,8 +1086,16 @@ save_server_config() {
 }
 
 restore_server_config() {
-    local tarfile=$1
+    local tarfile="$1"
     shift
+    rootdir=`tar tf "$tarfile" | head -1`
+    case "$rootdir" in
+        state/) ;;
+        *)
+            >&2 echo "error: unknown tar archive format - only GNU tar is supported, the root directory must be 'state/'"
+            exit 1
+            ;;
+    esac
     mkdir -p $SVRSTATEDIR
     rm -rf $SVRSTATEDIR/netplan
     rm -rf $SVRSTATEDIR/openvpn
