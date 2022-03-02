@@ -964,7 +964,8 @@ del_tunnel_from_lanbr() {
 }
 
 get_current_lanbr_slaves() {
-    ip link show master lanbr0 | awk '/^[0-9]*: (en|gre)/{print substr($2, 1, length($2)-1)}' | sed 's/@NONE//'
+    #ip link show master lanbr0 | awk '/^[0-9]*: (en|gre)/{print substr($2, 1, length($2)-1)}' | sed 's/@NONE//'
+    cat /etc/netplan/20-tunnel-gateway*.yaml | awk -F':' '/gretap[0-9]+/{print $1}'
 }
 
 get_next_gretap_device() {
@@ -1245,12 +1246,12 @@ new_client () {
             export netmask=$CLIENT_NETMASK
             export gateway=$CLIENT_GATEWAY
             export nameservers=$CLIENT_NAMESERVERS
-            cat ${TOOLDIR}/templates/client/netplan/00-static-remote-gateway.yaml.tmpl | envsubst
+            cat ${TOOLDIR}/templates/client/etc/netplan/00-static-remote-gateway.yaml.tmpl | envsubst
         ) > ${GWYSTATEDIR}/$client/etc/netplan/00-static-remote-gateway.yaml
     else
-        cp ${TOOLDIR}/templates/client/netplan/00-remote-gateway.yaml.tmpl ${GWYSTATEDIR}/$client/etc/netplan/00-remote-gateway.yaml
+        cp ${TOOLDIR}/templates/client/etc/netplan/00-remote-gateway.yaml.tmpl ${GWYSTATEDIR}/$client/etc/netplan/00-remote-gateway.yaml
     fi
-    for template in $(find ${TOOLDIR}/templates/client -name '*.tmpl') ; do
+    for template in $(find ${TOOLDIR}/templates/client/etc -name '*.tmpl') ; do
         case "$template" in
             */netplan/00-*.tmpl) ;;
             *.tmpl)
