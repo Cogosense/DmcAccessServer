@@ -28,12 +28,17 @@ client=$1
     exit 2
 }
 
+case `uname` in
+    Linux) TAR=tar;;
+    *) TAR=gtar;;
+esac
+
 (
     echo '#!/bin/bash'
     echo "SNMP_USER=\"$snmp_user\""
     echo "SNMP_PASSWORD=\"$snmp_password\""
     cat $TOOLDIR/templates/client/selfextract_header
-    tar cz -C $GATEWAYSDIR/$client .
+    $TAR cz -C $GATEWAYSDIR/$client .
 ) > $GATEWAYSDIR/install_$client.shar
 
 exit 0
