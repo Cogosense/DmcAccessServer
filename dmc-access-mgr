@@ -1119,6 +1119,7 @@ restore_server_config() {
 }
 
 recover_server() {
+    rm -f ${STATEDIR}/.staging-done
     stage_server
     if [ -d $SVRSTATEDIR -a -f $STATEDIR/.svrconfig ] ; then
         load_config $STATEDIR/.svrconfig
