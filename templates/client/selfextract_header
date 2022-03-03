@@ -96,7 +96,7 @@ __EOF
     fi
     systemctl start snmpd
 else
-    sed '0,/^__EOF__$/d' $0 | tar xz -C /
+    sed '0,/^__EOF__$/d' $0 | tar xz --no-same-owner -C /
     if [ -f /etc/netplan/01-network-manager-all.yaml ] ; then
         rm /etc/netplan/01-network-manager-all.yaml
     fi
