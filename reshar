@@ -3,13 +3,47 @@
 # Use to reshar an existing gateway installer if the
 # saved configuration is changed by hand.
 #
+progname=$(basename $0)
 TOOLDIR=$(cd $(dirname $0) && pwd)
+
+usage() {
+    cat << _EOF
+
+"$progname" recreate remote gateway installation scripts
+
+Usage: $0 [OPTIONS] <gateway_name>
+
+The working directory must be the server state directory or the
+root directory of an extracted state archive. The script detects
+the state directory by looking for the file '.snmpauth' in the
+current directory.
+
+The script will look for the gateway configuration in the directory
+'<cwd>/gateways/<gateway_name>/' and recreate the installer file
+'<cwd>/gateways/install_<gateway_name>.shar'.
+
+This tool can be used to rectify problems in the gateway configuration
+or to incorporate changes in the installer script header script fragment.
+
+OPTIONS:
+
+ -h               This help screen
+ -x               Turn on bash shell tracing.
+
+_EOF
+}
+while getopts hx c ; do
+    case $c in
+        h) usage ; exit 0 ;;
+        x) set -x ;;
+        \?) usage ; >&2 echo "unknown option: $c" ; exit 1 ;;
+    esac
+done
+
 if [ -f .snmpauth ] ; then
     STATEDIR=$PWD
-elif [ -f $TOOLDIR/state/.snmpauth ] ; then
-    STATEDIR=$TOOLDIR/state
 else
-    2>& echo "state archive not found"
+    2>& echo "state archive not found: make sure you are in the root directory of the state archive"
 fi
 
 . $STATEDIR/.snmpauth
