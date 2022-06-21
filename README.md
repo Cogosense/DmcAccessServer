@@ -319,6 +319,254 @@ bridge will be sent via the GRETAP tunnel to the other bridge. From the DMC or a
 point of view, it looks to all practical intents and purposes that they are directly
 connected. The gateway and the Access Server are essentially transparent.
 
+## Operations and Maintenance Procedures
+
+### Remote Access
+
+### SNMPv3
+
+All gateways and servers have SNMPv3 enabled with standard IETF MIB descriptions. The
+default credentials for connecting are:
+
+- Username: dali
+- Password: dali1234
+
+But these can be overridden when the VPN server is setup using the __dmc-access-mgr__
+script. The same server SNMP authentication credentials are used for every gateway
+configuration that is created on the server.
+
+### SSH Credentials
+
+The command line can be accessed via SSH.  All servers and gateways use the same
+credentials:
+
+- Username: dali
+- Password: dali1234
+
+### SSH Command line Access To VPN Server from DMC
+
+The VPN server can be accessed from the DMC at the IPv6 address of port 1 on the
+Qotom unit.
+
+    ssh dali@<port1_ipv6_addr>%lanbr0
+
+### SSH Command line Access To VPN Server from Any VPN gateway
+
+The server has a fixed IPv4 VPN address of 10.8.0.1. From any gateway, provided the VPN
+is connected, it is possible to connect via SSH to the VPN server with the command:
+
+    ssh dali@10.8.0.1
+
+### SSH Command line Access To VPN gateway from VPN Server
+
+First login to the VPN server using SSH.
+
+Each gateway is allocated an IP address in the 10.8.0..0/24 network, starting with
+10.8.0.2 as the first gateway. If the gateways have been numbered sequentially, then
+the fourth octet of the IP address will be the gateway number+1. i.e. to connect to
+_gateway1_, the command is:
+
+    ssh dali@10.8.0.2
+
+If the gateway numbering and IP address assignment have become non consecutive for
+any reason, a gateway name can be mapped to an IP by referring to the file
+_/etc/openvpn/ccd/{gateway_name}_.
+
+    dali@vpnserver:~$ cat /etc/openvpn/ccd/gateway1
+    ifconfig-push 10.8.0.2 255.255.255.0
+
+### SSH Access via Port 2
+
+Both VPN server and VPN gateway units support direct SSH access via port 2. The
+IPv6 address of port 2 is required to access the command line in this manner.
+
+Directly connect the LAN port of a laptop or other machine to port 2 of the
+Qotom unit. Then using putty or a SSH command line to connect to the Qotom.
+
+    ssh dali@{ipv6_addr_port_2}%ifname|ifindex
+
+Where __ifname__ is the name of the connected interface or __ifindex__ is the
+index of the connected interface. For example:
+
+    ssh dali@fe80::2e0:4cff:fe83:ed0%eth0
+    ssh dali@fe80::2e0:4cff:fe83:ed0%15
+
+WHere __fe80::2e0:4cff:fe83:ed0__ is the ipv6 link local address of the port 2
+interface.
+
+### Listing all IPv6 Link Local Addresses
+
+The IPv6 link local addresses should be recorded for deployed units to facilitate
+ease of future management.
+
+    dali@vpnserver:~$ ip addr show dev enp1s0
+    2: enp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+        link/ether 00:e0:4c:83:0e:ce brd ff:ff:ff:ff:ff:ff
+        inet 10.11.7.85/24 brd 10.11.7.255 scope global enp1s0
+           valid_lft forever preferred_lft forever
+        inet6 fe80::2e0:4cff:fe83:ece/64 scope link
+           valid_lft forever preferred_lft forever
+
+The device names for ports 1,2,3 and 4 are enp1s0, enp2s0, enp3s0 and enp4s0 respectively.
+
+### Check Connectivity of Server To Gateway.
+
+Generally this cannot be done. The gateway is usually behind a firewall and a NAT device. On
+the server check connectivity to an intermediate device such as the default gateway using the
+ping command.
+
+Incoming connections can be monitored by watching the log file _/var/log/openvpn/openvpn.log_
+
+    dali@vpnserver:~$ sudo tail -f /var/log/openvpn/openvpn.log
+    [sudo] password for dali:
+    gateway2/10.35.1.2:40411 peer info: IV_PROTO=2
+    gateway2/10.35.1.2:40411 peer info: IV_LZ4=1
+    gateway2/10.35.1.2:40411 peer info: IV_LZ4v2=1
+    gateway2/10.35.1.2:40411 peer info: IV_LZO=1
+    gateway2/10.35.1.2:40411 peer info: IV_COMP_STUB=1
+    gateway2/10.35.1.2:40411 peer info: IV_COMP_STUBv2=1
+    gateway2/10.35.1.2:40411 peer info: IV_TCPNL=1
+    gateway2/10.35.1.2:40411 Outgoing Data Channel: Cipher 'AES-256-GCM' initialized with 256 bit key
+    gateway2/10.35.1.2:40411 Incoming Data Channel: Cipher 'AES-256-GCM' initialized with 256 bit key
+    gateway2/10.35.1.2:40411 Control Channel: TLSv1.3, cipher TLSv1.3 TLS_AES_256_GCM_SHA384, 2048 bit RSA
+
+The current status of the VPN service can be checked using the _systemctl status_ command:
+
+    dali@vpnserver:~$ systemctl status openvpn-server@server.service
+    ● openvpn-server@server.service - OpenVPN service for server
+         Loaded: loaded (/lib/systemd/system/openvpn-server@.service; enabled; vendor preset: enabled)
+         Active: active (running) since Fri 2022-04-29 17:11:31 PDT; 1 months 22 days ago
+           Docs: man:openvpn(8)
+                 https://community.openvpn.net/openvpn/wiki/Openvpn24ManPage
+                 https://community.openvpn.net/openvpn/wiki/HOWTO
+       Main PID: 1005 (openvpn)
+         Status: "Initialization Sequence Completed"
+          Tasks: 1 (limit: 9257)
+         Memory: 4.3M
+         CGroup: /system.slice/system-openvpn\x2dserver.slice/openvpn-server@server.service
+                 └─1005 /usr/sbin/openvpn --status /run/openvpn-server/status-server.log --status-version 2 --suppress-timestamps --config se>
+
+    Apr 29 17:11:31 vpnserver systemd[1]: Starting OpenVPN service for server...
+    Apr 29 17:11:31 vpnserver systemd[1]: Started OpenVPN service for server.
+
+### Soft Restart of VPN server
+
+Via the SSH command line a VPN restart can be initiated using the _systemctl restart_ command. This will drop all
+VPN connections, the gateways will attempt to reestablish the connection every 5 minutes after the connection drops.
+
+    dali@vpnserver:~$ sudo systemctl restart openvpn-server@server.service
+
+### Status of Gateway Connections on the Server
+
+The openvpn server can dump status to the system log file by sending the openvpn process a SIGUSR2 signal. Use
+the __pkill__ ,__cat__, and __perl__ commands to view the current VPN connection status:
+
+    sudo pkill -SIGUSR2 openvpn
+    sudo cat /var/log/openvpn/openvpn.log | perl -pne '/^TITLE..^END/'
+
+The output will look similar to the following:
+
+    TITLE>,OpenVPN 2.4.7 x86_64-pc-linux-gnu [SSL (OpenSSL)] [LZO] [LZ4] [EPOLL] [PKCS11] [MH/PKTINFO] [AEAD] built on Jul 19 2021
+    TIME,Tue Jun 21 11:37:52 2022,1655836672
+    HEADER,CLIENT_LIST,Common Name,Real Address,Virtual Address,Virtual IPv6 Address,Bytes Received,Bytes Sent,Connected Since,Connected Since (time_t),Username,Client ID,Peer ID
+    CLIENT_LIST,gateway2,10.35.1.2:45831,10.8.0.3,,22114083,6293839,Tue Jun 21 11:20:05 2022,1655835605,UNDEF,0,0
+    HEADER,ROUTING_TABLE,Virtual Address,Common Name,Real Address,Last Ref,Last Ref (time_t)
+    ROUTING_TABLE,10.8.0.3,gateway2,10.35.1.2:45831,Tue Jun 21 11:37:52 2022,1655836672
+    GLOBAL_STATS,Max bcast/mcast queue length,1
+    END
+
+The status output starts with the word __TITLE__ and ends with the word __END__. The __CLIENT_LIST__ line will show the connected gateways.
+
+### Check Connectivity of Gateway To Server.
+
+Log into the VPN gateway.
+
+Check connectivity to VPN server:
+
+First try the VPN server tunnel endpoint address:
+
+    dali@vpngateway2:~$ ping 10.8.0.1
+    PING 10.8.0.1 (10.8.0.1) 56(84) bytes of data.
+    64 bytes from 10.8.0.1: icmp_seq=1 ttl=64 time=1.17 ms
+    64 bytes from 10.8.0.1: icmp_seq=2 ttl=64 time=1.07 ms
+    64 bytes from 10.8.0.1: icmp_seq=3 ttl=64 time=1.24 ms
+
+A response means the VPN connection is up and functioning correctly. If there is no response
+the connectivity to the VPN server must be checked.
+
+First stop the VPN gateway, the service name is _openvpn@{gateway_name}.service_, so for the
+gateway named __gateway2__, the command would be::
+
+    sudo systemctl stop openvpn@gateway2.service
+
+Find the VPN server address:
+
+    dali@vpngateway2:~$ grep '^remote ' /etc/openvpn/gateway2.conf
+    remote 10.35.1.221 1194
+
+Ping the server:
+
+    ping 10.35.1.221
+
+No response from the server indicates an intervening network issue that should be rectified.
+
+After checking the server connectivity, restart the VPN service:
+
+    sudo systemctl start openvpn@gateway2.service
+
+Outgoing connection attempts can be monitored by watching the system logs:
+
+    dali@vpngateway2:~$ tail -f /var/log/syslog | grep ovpn
+    Jun 14 03:17:03 vpngateway2 ovpn-gateway2[731]: Incoming Data Channel: Cipher 'AES-256-GCM' initialized with 256 bit key
+    Jun 14 03:17:03 vpngateway2 ovpn-gateway2[731]: Control Channel: TLSv1.3, cipher TLSv1.3 TLS_AES_256_GCM_SHA384, 2048 bit RSA
+    Jun 14 04:17:02 vpngateway2 ovpn-gateway2[731]: TLS: tls_process: killed expiring key
+    Jun 14 04:17:02 vpngateway2 ovpn-gateway2[731]: VERIFY OK: depth=1, CN=ChangeMe
+
+or by using _systemctl status_
+
+    dali@vpngateway2:~$ systemctl status openvpn@gateway2.service
+    ● openvpn@gateway2.service - OpenVPN connection to gateway2
+         Loaded: loaded (/lib/systemd/system/openvpn@.service; enabled-runtime; vendor preset: enabled)
+         Active: active (running) since Thu 2022-06-16 10:07:25 PDT; 5 days ago
+           Docs: man:openvpn(8)
+                 https://community.openvpn.net/openvpn/wiki/Openvpn24ManPage
+                 https://community.openvpn.net/openvpn/wiki/HOWTO
+       Main PID: 728 (openvpn)
+         Status: "Initialization Sequence Completed"
+          Tasks: 1 (limit: 9276)
+         Memory: 2.6M
+         CGroup: /system.slice/system-openvpn.slice/openvpn@gateway2.service
+                 └─728 /usr/sbin/openvpn --daemon ovpn-gateway2 --status /run/openvpn/gateway2.status 10 --cd /etc/openvpn --script-security >
+
+    Jun 21 09:24:18 vpngateway2 ovpn-gateway2[728]: Control Channel: TLSv1.3, cipher TLSv1.3 TLS_AES_256_GCM_SHA384, 2048 bit RSA
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: VERIFY OK: depth=1, CN=ChangeMe
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: VERIFY KU OK
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: Validating certificate extended key usage
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: ++ Certificate has EKU (str) TLS Web Server Authentication, expects TLS Web Server Authen>
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: VERIFY EKU OK
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: VERIFY OK: depth=0, CN=server
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: Outgoing Data Channel: Cipher 'AES-256-GCM' initialized with 256 bit key
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: Incoming Data Channel: Cipher 'AES-256-GCM' initialized with 256 bit key
+    Jun 21 10:24:17 vpngateway2 ovpn-gateway2[728]: Control Channel: TLSv1.3, cipher TLSv1.3 TLS_AES_256_GCM_SHA384, 2048 bit RSA
+
+### Soft Restart of VPN gateway
+
+Via the SSH command line a VPN restart can be initiated using the _systemctl restart_ command. This will drop the
+VPN connection, the gateway will attempt to reestablish the connection immediately and then every 5 minutes after the connection drops.
+
+    dali@vpngateway2:~$ sudo systemctl restart openvpn@gateway2.service
+
+The gateway can safely be restarted using this command when logged in over the VPN connection from the VPN server via port 1.
+The current connection should be preserved.
+
+### Hard reboot of VPN gateway
+
+Via an SSH connection reboot the gateway:
+
+    sudo reboot
+
+This will drop the connection. A connection can be reestablished to the gateway within 3-5 minutes.
+
 ## Simulating Slow Links on Fast Networks
 
 The main use case for the DMC Access Server usually involves creating a transport
