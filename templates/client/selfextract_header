@@ -124,7 +124,8 @@ else
     fi
     if [ ! -e '/usr/sbin/snmpd' -o ! -e '/usr/bin/net-snmp-create-v3-user' ] ; then
         >&2 echo "warning: SNMP is not installed: trying to install now"
-        apt install snmpd snmp libsnmp-dev
+        apt install snmpd snmp snmp-mibs-downloader libsnmp-dev
+        sed -i.bak 's/^mibs/#mibs:/' /etc/snmp/snmp.conf
         if [ ! -e '/usr/sbin/snmpd' -o ! -e '/usr/bin/net-snmp-create-v3-user' ] ; then
             >&2 echo "error: unable to install SNMP server and tools please resolve before proceeding"
             >&2 echo "    sudo apt install snmpd snmp libsnmp-dev"
