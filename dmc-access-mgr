@@ -965,7 +965,10 @@ del_tunnel_from_lanbr() {
 
 get_current_lanbr_slaves() {
     #ip link show master lanbr0 | awk '/^[0-9]*: (en|gre)/{print substr($2, 1, length($2)-1)}' | sed 's/@NONE//'
-    cat /etc/netplan/20-tunnel-gateway*.yaml | awk -F':' '/gretap[0-9]+/{print $1}'
+    gateways=$(find /etc/netplan -name '20-tunnel-gateway*.yaml')
+    if [ -n "$gateways" ] ; then
+        cat $gateways | awk -F':' '/gretap[0-9]+/{print $1}'
+    fi
 }
 
 get_next_gretap_device() {
@@ -1101,6 +1104,7 @@ restore_server_config() {
     rm -rf $SVRSTATEDIR/netplan
     rm -rf $SVRSTATEDIR/openvpn
     cp ${SERVERDIR}/server.conf $SVRSTATEDIR/server.conf
+    cp  $STATEDIR/.svrconfig $TOOLDIR/
     if [ -f "$tarfile" ] ; then
         tar xp -C $TOOLDIR -f $tarfile
         rm -rf $CFGDIR.bak
@@ -1110,6 +1114,8 @@ restore_server_config() {
         cp -a $SVRSTATEDIR/openvpn $CFGDIR
         cp -a $SVRSTATEDIR/netplan $NETPLANDIR
         cp $SVRSTATEDIR/server.conf ${SERVERDIR}/server.conf
+        cp $NETPLANDIR.bak/00*.yaml $NETPLANDIR/
+        mv $TOOLDIR/.svrconfig $STATEDIR
         if [ -d $CFGDIR -a -d $NETPLANDIR ] ; then
             netplan generate
             netplan apply
