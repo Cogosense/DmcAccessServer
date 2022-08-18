@@ -319,18 +319,18 @@ ifinfo_get() {
             nameservers="$nameserver"
             prompt="Add another nameserver [$nameservers] ? [yN] "
             yAction=''
-            nAction='breck'
+            nAction='break'
             defaultAction='break'
         elif [ -n "$nameserver" -a -n "$nameservers" ] ; then
             nameservers="$nameservers,$nameserver"
             prompt="Add another nameserver [$nameservers] ? [yN] "
             yAction=''
-            nAction='breck'
+            nAction='break'
             defaultAction='break'
         else
             prompt="Add another nameserver [$nameservers] ? [yN] "
             yAction=''
-            nAction='breck'
+            nAction='break'
             defaultAction='break'
         fi
         read -p "$prompt" reply
