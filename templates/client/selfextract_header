@@ -80,6 +80,7 @@ network:
   version: 2
   renderer: NetworkManager
 __EOF
+    rm /etc/networkd-dispatcher/routable.d/50-gretap1-reconfig
     for openvpnconf in /etc/openvpn/*.conf; do
         if [ -e $openvpnconf ] ; then
             service=$(basename -s .conf ${openvpnconf}).service
