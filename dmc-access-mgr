@@ -45,6 +45,9 @@ file to the production system and activate with the '-c' option.
 The first time it is run, the OVPN server, SNMP server, SSH server and the
 network topology will be initialized and a first gateway config created.
 
+Setup over a remote SSH connection is supported only if the SSH client
+is connected over IPv6 link local address.
+
 Subsequent runs with no options can be used to add gateways and to revoke
 gateways.
 
@@ -87,6 +90,15 @@ fi
 
 # Discard stdin. Needed when running from an one-liner which includes a newline
 read -N 999999 -t 0.001
+
+# Detect remote connections
+if [ -n "$SSH_CLIENT" ] ; then
+    if [[ "$SSH_CLIENT" != "fe80::"* ]] ; then
+        echo "Remote installation is only supported over an IPv6 link local address."
+        ip -6 -br a | awk '/UP/{print $1 ": " $3}' | sed 's|/.*$||'
+        exit
+    fi
+fi
 
 # Detect OpenVZ 6
 if [[ $(uname -r | cut -d "." -f 1) -eq 2 ]]; then
