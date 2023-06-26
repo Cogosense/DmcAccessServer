@@ -930,9 +930,9 @@ create_wanif() {
         activate_wanif='no'
     fi
 
-    netplan generate
-    netplan apply
     if [ $activate_wanif == 'yes' ] ; then
+        netplan generate
+        netplan apply
         while [ -z "$(ip -4 addr show $wanif | awk '/inet/{print $2}')" ] ; do : ; done
     fi
 }
@@ -951,8 +951,10 @@ create_dmc_lanbr() {
         #
         cp ${TOOLDIR}/templates/server/networkd-dispatcher/routable.d/50-all-gretap-reconfig.tmpl ${NETWORKDDIR}/routable.d/50-all-gretap-reconfig
     )
-    netplan generate
-    netplan apply
+    if [ $activate_wanif == 'yes' ] ; then
+        netplan generate
+        netplan apply
+    fi
 }
 
 add_tunnel_to_lanbr() {
@@ -1005,13 +1007,17 @@ create_tunnel() {
     shift
     local serverip=$1
     shift
+    local activate=$1
+    shift
 
     if [ ! -f ${NETPLANDIR}/20-tunnel-${name}.yaml ] ; then
         local tunnel=`get_next_gretap_device`
         cat < ${TOOLDIR}/templates/server/netplan/20-tunnel-remotegw-n.tmpl | tunnel="$tunnel" clientip="$clientip" serverip="$serverip" envsubst > ${NETPLANDIR}/20-tunnel-${name}.yaml
         add_tunnel_to_lanbr $tunnel
-        netplan generate
-        netplan apply
+        if [ $activate == 'yes' ] ; then
+            netplan generate
+            netplan apply
+        fi
     fi
 }
 
@@ -1248,14 +1254,22 @@ stage_server() {
     fi
 }
 
+lladdr() {
+    IFS=':'; set $1; unset IFS
+    o1=$(( 16#${1} ^ 2 ))
+    printf "fe80::%x%x:%x:%x:%x\n" $o1 0x${2} 0x${3}ff 0xfe${4} 0x${5}${6}
+}
+
 new_client () {
     [ -f $STATEDIR/.gwconfig ] && . $STATEDIR/.gwconfig
 
+    local activate=$1
+    shift
     local serverip=$(get_server_ip)
     local clientip=$(get_client_ip)
     local netmask=$(ipcalc -nb ${VPNNET} | awk '/Netmask:/{print $2}')
 
-    create_tunnel $client $clientip $serverip
+    create_tunnel $client $clientip $serverip $activate
     mkdir -p ${GWYSTATEDIR}/$client/etc
     # Generate netplan config for gateway
     mkdir -p ${GWYSTATEDIR}/$client/etc/netplan
@@ -1779,7 +1793,7 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     enable_and_start_dmc_access_server
 
     # Generates the custom client.ovpn
-    new_client
+    new_client $activate_wanif
     if [ ! -f $STATEDIR/.svrconfig ] ; then
         write_config_file $STATEDIR/.svrconfig
     fi
@@ -1787,6 +1801,19 @@ if [[ ! -e ${SERVERDIR}/server.conf ]]; then
     echo "Finished!"
     echo
     echo "New clients can be added by running this script again."
+    if [ $activate_wanif == 'no' ] ; then
+        sudo netplan generate
+        echo "reboot the VPN server to activate the new configuration"
+
+        ip -6 -br link |
+        while read -r interface state mac flags
+        do
+            case $interface in
+                en*|eth*) echo "    port $interface: connect to iP6 addr $(lladdr $mac)" ;;
+            esac
+        done
+
+    fi
 else
     clear
     echo "DMC Access Server is already installed."
@@ -1815,7 +1842,7 @@ else
             cd ${SERVERDIR}/easy-rsa/
             EASYRSA_CERT_EXPIRE=3650 ./easyrsa build-client-full "$client" nopass
             # Generates the custom client.ovpn
-            new_client
+            new_client 'yes'
             exit
         ;;
         2)
